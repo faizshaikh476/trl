@@ -1,0 +1,20 @@
+{
+  "platformAdmins": {
+    "user_super_admin": {
+      "name": "Super Admin",
+      "email": "admin@therealestatelink.local",
+      "role": "super_admin"
+    }
+  },
+  "workspaces": {
+    "workspace_rare_address": {
+      "name": "The Rare Address",
+      "slug": "the-rare-address",
+      "city": "Pune",
+      "ownerId": "user_owner_demo",
+      "contactPhone": "9822052388",
+      "planId": "pro",
+      "status": "active"
+    }
+  }
+}

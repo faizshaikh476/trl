@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return signedIn() && request.auth.token.superAdmin == true;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    function isAllowedMedia() {
+      return request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches("(image|video)/.*");
+    }
+
+    match /workspaces/{workspaceId}/public/{allPaths=**} {
+      allow read: if true;
+      allow write: if (isSuperAdmin() || isWorkspaceMember(workspaceId)) && isAllowedMedia();
+    }
+
+    match /workspaces/{workspaceId}/private/{allPaths=**} {
+      allow read: if isSuperAdmin() || isWorkspaceMember(workspaceId);
+      allow write: if (isSuperAdmin() || isWorkspaceMember(workspaceId)) && isAllowedMedia();
+    }
+  }
+}

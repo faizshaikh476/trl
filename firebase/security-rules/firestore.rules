@@ -1,0 +1,160 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return signedIn() && request.auth.token.superAdmin == true;
+    }
+
+    function isPlatformAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+    }
+
+    function memberDoc(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return signedIn() && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    function workspaceRole(workspaceId) {
+      return isWorkspaceMember(workspaceId) ? memberDoc(workspaceId).data.role : null;
+    }
+
+    function hasAnyWorkspaceRole(workspaceId, roles) {
+      return isSuperAdmin() || isPlatformAdmin() || (isWorkspaceMember(workspaceId) && workspaceRole(workspaceId) in roles);
+    }
+
+    function canManageListings(workspaceId) {
+      return hasAnyWorkspaceRole(workspaceId, [
+        "broker_owner",
+        "broker_manager",
+        "listing_executive"
+      ]);
+    }
+
+    function canPublishListings(workspaceId) {
+      return hasAnyWorkspaceRole(workspaceId, ["broker_owner", "broker_manager"]);
+    }
+
+    function canManageMedia(workspaceId) {
+      return hasAnyWorkspaceRole(workspaceId, [
+        "broker_owner",
+        "broker_manager",
+        "listing_executive",
+        "photographer"
+      ]);
+    }
+
+    function canManageLeads(workspaceId) {
+      return hasAnyWorkspaceRole(workspaceId, [
+        "broker_owner",
+        "broker_manager",
+        "sales_executive"
+      ]);
+    }
+
+    function canViewWorkspace(workspaceId) {
+      return isSuperAdmin() || isPlatformAdmin() || isWorkspaceMember(workspaceId);
+    }
+
+    match /publicListingIndex/{slug} {
+      allow read: if true;
+      allow write: if isSuperAdmin() || isPlatformAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isSuperAdmin() || isPlatformAdmin() || request.auth.uid == userId;
+      allow write: if isSuperAdmin() || isPlatformAdmin();
+    }
+
+    match /platformAdmins/{userId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    match /subscriptions/{subscriptionId} {
+      allow read: if isSuperAdmin() || isPlatformAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    match /platformSettings/{settingId} {
+      allow read: if isSuperAdmin() || isPlatformAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    match /workspaces/{workspaceId} {
+      allow read: if canViewWorkspace(workspaceId);
+      allow create, update: if isSuperAdmin() || isPlatformAdmin();
+      allow delete: if isSuperAdmin();
+
+      match /members/{memberId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow write: if isSuperAdmin() || isPlatformAdmin() || hasAnyWorkspaceRole(workspaceId, ["broker_owner"]);
+      }
+
+      match /listings/{listingId} {
+        allow read: if resource.data.status == "published" || canViewWorkspace(workspaceId);
+        allow create: if canManageListings(workspaceId);
+        allow update: if canManageListings(workspaceId)
+          && (!("status" in request.resource.data.diff(resource.data).changedKeys())
+            || canPublishListings(workspaceId));
+        allow delete: if isSuperAdmin() || isPlatformAdmin() || hasAnyWorkspaceRole(workspaceId, ["broker_owner"]);
+      }
+
+      match /media/{mediaId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow write: if canManageMedia(workspaceId);
+      }
+
+      match /leads/{leadId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow create: if true;
+        allow update: if canManageLeads(workspaceId);
+        allow delete: if isSuperAdmin() || isPlatformAdmin() || hasAnyWorkspaceRole(workspaceId, ["broker_owner"]);
+      }
+
+      match /intakeSessions/{sessionId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow write: if canManageListings(workspaceId);
+      }
+
+      match /whatsappMessages/{messageId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow write: if isSuperAdmin() || isPlatformAdmin();
+      }
+
+      match /analyticsEvents/{eventId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow create: if true;
+        allow update, delete: if isSuperAdmin() || isPlatformAdmin();
+      }
+
+      match /auditLogs/{auditLogId} {
+        allow read: if isSuperAdmin() || isPlatformAdmin() || hasAnyWorkspaceRole(workspaceId, ["broker_owner"]);
+        allow create: if signedIn();
+        allow update, delete: if false;
+      }
+
+      match /aiGenerations/{generationId} {
+        allow read: if isSuperAdmin() || isPlatformAdmin() || hasAnyWorkspaceRole(workspaceId, ["broker_owner", "broker_manager"]);
+        allow create: if isSuperAdmin() || isPlatformAdmin();
+        allow update, delete: if false;
+      }
+
+      match /settings/{settingId} {
+        allow read: if canViewWorkspace(workspaceId);
+        allow write: if isSuperAdmin() || isPlatformAdmin() || hasAnyWorkspaceRole(workspaceId, ["broker_owner"]);
+      }
+    }
+  }
+}
