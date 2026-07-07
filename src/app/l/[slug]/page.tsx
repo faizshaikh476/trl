@@ -21,14 +21,12 @@ import { Button } from "@/components/ui/button";
 import { OwnerVerificationModal } from "@/components/public/owner-verification-modal";
 import { LeadForm } from "@/components/public/lead-form";
 import { PropertyCarousel } from "@/components/public/property-carousel";
-import { getAuthenticatedUser } from "@/lib/auth/current-user";
 import { getPublicBaseUrl, ownerClaimService, type OwnerClaimLookup } from "@/lib/claims/owner-claim-service";
 import { formatNumber, formatRupees } from "@/lib/format";
 import { listingService } from "@/lib/listings/listing-service";
 import { mediaService } from "@/lib/media/media-service";
 import { ownerProfileService } from "@/lib/owners/owner-profile-service";
 import { getPlatformBranding } from "@/lib/platform/branding";
-import { workspaceService } from "@/lib/workspaces/workspace-service";
 import type { Listing } from "@/types/domain";
 
 type QuickFact = {
@@ -58,15 +56,11 @@ export default async function PublicListingPage({
   const verifiedOwnerProfilePromise = listing.ownerProfileId
     ? getCachedOwnerProfile(listing.workspaceId, listing.ownerProfileId)
     : Promise.resolve(null);
-  const [workspace, media, user, claimLookup, verifiedOwnerProfile] = await Promise.all([
-    getCachedWorkspace(listing.workspaceId),
+  const [media, claimLookup, verifiedOwnerProfile] = await Promise.all([
     getCachedListingMedia(listing.workspaceId, listing.id),
-    getAuthenticatedUser(),
     claimLookupPromise,
     verifiedOwnerProfilePromise,
   ]);
-  if (!workspace) notFound();
-  const brokerCanEdit = Boolean(user?.workspaceId === listing.workspaceId);
   const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
   const showVerificationModal = Boolean(claimMatchesListing);
   const isBrokerVerified =
@@ -82,7 +76,6 @@ export default async function PublicListingPage({
       <UnverifiedListingGate
         branding={branding}
         listing={listing}
-        brokerCanEdit={brokerCanEdit}
         verificationLookup={verificationLookup}
       />
     );
@@ -180,11 +173,6 @@ export default async function PublicListingPage({
                   <MessageCircle className="size-4" />
                   WhatsApp
                 </a>
-              </Button>
-            ) : null}
-            {brokerCanEdit ? (
-              <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
-                <Link href={`/dashboard/listings/${listing.id}`}>Edit</Link>
               </Button>
             ) : null}
           </div>
@@ -438,12 +426,10 @@ export default async function PublicListingPage({
 function UnverifiedListingGate({
   branding,
   listing,
-  brokerCanEdit,
   verificationLookup,
 }: {
   branding: Awaited<ReturnType<typeof getPlatformBranding>>;
   listing: Listing;
-  brokerCanEdit: boolean;
   verificationLookup: Extract<OwnerClaimLookup, { status: "ready" }> | null;
 }) {
   return (
@@ -458,11 +444,6 @@ function UnverifiedListingGate({
               branding.brandName
             )}
           </Link>
-          {brokerCanEdit ? (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/dashboard/listings/${listing.id}`}>Edit</Link>
-            </Button>
-          ) : null}
         </div>
       </header>
 
@@ -570,7 +551,6 @@ const getCachedShareableListing = cache((slug: string) => listingService.findSha
 const getCachedListingMedia = cache((workspaceId: string, listingId: string) =>
   mediaService.listByListing(workspaceId, listingId),
 );
-const getCachedWorkspace = cache((workspaceId: string) => workspaceService.findById(workspaceId));
 const getCachedOwnerProfile = cache((workspaceId: string, ownerProfileId: string) =>
   ownerProfileService.findById(workspaceId, ownerProfileId),
 );
