@@ -15,8 +15,22 @@ export class MediaService {
   }
 
   async heroForListing(workspaceId: string, listingId: string) {
-    const media = await this.listByListing(workspaceId, listingId);
-    return media.find((asset) => asset.isHero) ?? media[0] ?? null;
+    const heroSnapshot = await getAdminDb()
+      .collection(firestorePaths.workspaceMedia(workspaceId))
+      .where("listingId", "==", listingId)
+      .where("isHero", "==", true)
+      .limit(1)
+      .get();
+    const hero = heroSnapshot.docs[0];
+    if (hero) return { id: hero.id, ...hero.data() } as MediaAsset;
+
+    const fallbackSnapshot = await getAdminDb()
+      .collection(firestorePaths.workspaceMedia(workspaceId))
+      .where("listingId", "==", listingId)
+      .limit(1)
+      .get();
+    const fallback = fallbackSnapshot.docs[0];
+    return fallback ? ({ id: fallback.id, ...fallback.data() } as MediaAsset) : null;
   }
 }
 

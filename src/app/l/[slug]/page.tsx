@@ -50,28 +50,20 @@ export default async function PublicListingPage({
   ]);
   if (!listing) notFound();
 
-  const claimLookupPromise = query.claim
-    ? ownerClaimService.lookup(query.claim)
-    : Promise.resolve(null);
   const verifiedOwnerProfilePromise = listing.ownerProfileId
     ? getCachedOwnerProfile(listing.workspaceId, listing.ownerProfileId)
     : Promise.resolve(null);
-  const [media, claimLookup, verifiedOwnerProfile] = await Promise.all([
-    getCachedListingMedia(listing.workspaceId, listing.id),
-    claimLookupPromise,
-    verifiedOwnerProfilePromise,
-  ]);
-  const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
-  const showVerificationModal = Boolean(claimMatchesListing);
+  const verifiedOwnerProfile = await verifiedOwnerProfilePromise;
   const isBrokerVerified =
     listing.ownerClaimStatus === "claimed" || verifiedOwnerProfile?.status === "verified";
-  const pendingClaimLookup = !isBrokerVerified
-    ? claimMatchesListing
-      ? claimLookup
-      : await ownerClaimService.findPendingForListing(listing.workspaceId, listing.id)
-    : null;
-  const verificationLookup = pendingClaimLookup?.status === "ready" ? pendingClaimLookup : null;
   if (!isBrokerVerified) {
+    const claimLookup = query.claim ? await ownerClaimService.lookup(query.claim) : null;
+    const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
+    const pendingClaimLookup = claimMatchesListing
+      ? claimLookup
+      : await ownerClaimService.findPendingForListing(listing.workspaceId, listing.id);
+    const verificationLookup = pendingClaimLookup?.status === "ready" ? pendingClaimLookup : null;
+
     return (
       <UnverifiedListingGate
         branding={branding}
@@ -80,6 +72,10 @@ export default async function PublicListingPage({
       />
     );
   }
+  const claimLookup = query.claim ? await ownerClaimService.lookup(query.claim) : null;
+  const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
+  const showVerificationModal = Boolean(claimMatchesListing);
+  const media = await getCachedListingMedia(listing.workspaceId, listing.id);
   const verifiedContactPhone =
     isBrokerVerified && (listing.ownerPhone || verifiedOwnerProfile?.phone)
       ? phoneForContact(listing.ownerPhone || verifiedOwnerProfile?.phone || "")
@@ -518,8 +514,8 @@ export async function generateMetadata({
     };
   }
 
-  const media = await getCachedListingMedia(listing.workspaceId, listing.id);
-  const image = media[0]?.url;
+  const heroMedia = await getCachedListingHeroMedia(listing.workspaceId, listing.id);
+  const image = heroMedia?.url;
   const title = listing.seoTitle || listing.title;
   const description =
     listing.seoDescription ||
@@ -550,6 +546,9 @@ const getCachedPlatformBranding = cache(() => getPlatformBranding());
 const getCachedShareableListing = cache((slug: string) => listingService.findShareableBySlug(slug));
 const getCachedListingMedia = cache((workspaceId: string, listingId: string) =>
   mediaService.listByListing(workspaceId, listingId),
+);
+const getCachedListingHeroMedia = cache((workspaceId: string, listingId: string) =>
+  mediaService.heroForListing(workspaceId, listingId),
 );
 const getCachedOwnerProfile = cache((workspaceId: string, ownerProfileId: string) =>
   ownerProfileService.findById(workspaceId, ownerProfileId),
