@@ -6,6 +6,7 @@ import { verifyFirebaseIdToken } from "@/lib/auth/firebase-token";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { ownerClaimService, type OwnerClaimLookup } from "@/lib/claims/owner-claim-service";
+import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
 import type { OwnerClaimToken } from "@/types/domain";
 import type { WhatsAppProvider } from "@/lib/whatsapp/whatsapp-provider";
 
@@ -144,6 +145,7 @@ export class BrokerVerificationService {
       },
       { merge: true },
     );
+    revalidatePublicListing(lookup.listing);
 
     return {
       ok: true,

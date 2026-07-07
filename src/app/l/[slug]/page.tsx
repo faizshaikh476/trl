@@ -23,10 +23,14 @@ import { LeadForm } from "@/components/public/lead-form";
 import { PropertyCarousel } from "@/components/public/property-carousel";
 import { getPublicBaseUrl, ownerClaimService, type OwnerClaimLookup } from "@/lib/claims/owner-claim-service";
 import { formatNumber, formatRupees } from "@/lib/format";
-import { listingService } from "@/lib/listings/listing-service";
-import { mediaService } from "@/lib/media/media-service";
 import { ownerProfileService } from "@/lib/owners/owner-profile-service";
 import { getPlatformBranding } from "@/lib/platform/branding";
+import {
+  getCachedPublicBranding,
+  getCachedPublicListing,
+  getCachedPublicListingHeroMedia,
+  getCachedPublicListingMedia,
+} from "@/lib/public/public-listing-cache";
 import type { Listing } from "@/types/domain";
 
 type QuickFact = {
@@ -45,8 +49,8 @@ export default async function PublicListingPage({
   const { slug } = await params;
   const [query, branding, listing] = await Promise.all([
     searchParams,
-    getCachedPlatformBranding(),
-    getCachedShareableListing(slug),
+    getCachedPublicBranding(),
+    getCachedPublicListing(slug),
   ]);
   if (!listing) notFound();
 
@@ -75,7 +79,7 @@ export default async function PublicListingPage({
   const claimLookup = query.claim ? await ownerClaimService.lookup(query.claim) : null;
   const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
   const showVerificationModal = Boolean(claimMatchesListing);
-  const media = await getCachedListingMedia(listing.workspaceId, listing.id);
+  const media = await getCachedPublicListingMedia(listing.workspaceId, listing.id);
   const verifiedContactPhone =
     isBrokerVerified && (listing.ownerPhone || verifiedOwnerProfile?.phone)
       ? phoneForContact(listing.ownerPhone || verifiedOwnerProfile?.phone || "")
@@ -505,8 +509,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const [branding, listing] = await Promise.all([
-    getCachedPlatformBranding(),
-    getCachedShareableListing(slug),
+    getCachedPublicBranding(),
+    getCachedPublicListing(slug),
   ]);
   if (!listing) {
     return {
@@ -514,7 +518,7 @@ export async function generateMetadata({
     };
   }
 
-  const heroMedia = await getCachedListingHeroMedia(listing.workspaceId, listing.id);
+  const heroMedia = await getCachedPublicListingHeroMedia(listing.workspaceId, listing.id);
   const image = heroMedia?.url;
   const title = listing.seoTitle || listing.title;
   const description =
@@ -542,14 +546,6 @@ export async function generateMetadata({
   };
 }
 
-const getCachedPlatformBranding = cache(() => getPlatformBranding());
-const getCachedShareableListing = cache((slug: string) => listingService.findShareableBySlug(slug));
-const getCachedListingMedia = cache((workspaceId: string, listingId: string) =>
-  mediaService.listByListing(workspaceId, listingId),
-);
-const getCachedListingHeroMedia = cache((workspaceId: string, listingId: string) =>
-  mediaService.heroForListing(workspaceId, listingId),
-);
 const getCachedOwnerProfile = cache((workspaceId: string, ownerProfileId: string) =>
   ownerProfileService.findById(workspaceId, ownerProfileId),
 );

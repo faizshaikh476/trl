@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { getAuthenticatedUser, getCurrentAdmin, getCurrentUser } from "@/lib/auth/current-user";
 import { manualListingSchema } from "@/lib/listings/listing.schema";
 import { listingService } from "@/lib/listings/listing-service";
+import {
+  revalidatePublicListing,
+  revalidatePublicListingBySlug,
+} from "@/lib/public/public-listing-cache";
 import { PERMISSIONS } from "@/lib/rbac/permissions";
 import { requireWorkspacePermission } from "@/lib/rbac/require-permission";
 import type { ListingStatus } from "@/types/domain";
@@ -87,7 +91,9 @@ export async function updateManualListingAction(listingId: string, formData: For
   if (!listing) throw new Error("Listing not found");
   requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_EDIT);
   const input = formDataToListingInput(formData);
-  await listingService.updateManualInWorkspace(listing.workspaceId, listingId, input);
+  const updated = await listingService.updateManualInWorkspace(listing.workspaceId, listingId, input);
+  revalidatePublicListing(listing);
+  revalidatePublicListing(updated);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
   revalidatePath(`/dashboard/listings/${listingId}`);
@@ -105,7 +111,9 @@ export async function updateManualListingInWorkspaceAction(
   if (!listing) throw new Error("Listing not found");
   requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_EDIT);
   const input = formDataToListingInput(formData);
-  await listingService.updateManualInWorkspace(listing.workspaceId, listingId, input);
+  const updated = await listingService.updateManualInWorkspace(listing.workspaceId, listingId, input);
+  revalidatePublicListing(listing);
+  revalidatePublicListing(updated);
   revalidatePath("/admin/listings");
   revalidatePath(`/admin/listings/${listingId}`);
   revalidatePath("/dashboard");
@@ -118,7 +126,8 @@ export async function updateListingStatusAction(listingId: string, status: Listi
   const listing = await getListingForMutation(listingId, user.workspaceId ?? undefined);
   if (!listing) throw new Error("Listing not found");
   requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_PUBLISH);
-  await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
+  const updated = await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
+  revalidatePublicListing(updated);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
   revalidatePath("/admin/listings");
@@ -134,7 +143,8 @@ export async function updateListingStatusInWorkspaceAction(
   const listing = await getListingForMutation(listingId, workspaceId);
   if (!listing) throw new Error("Listing not found");
   requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_PUBLISH);
-  await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
+  const updated = await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
+  revalidatePublicListing(updated);
   revalidatePath("/admin/listings");
   revalidatePath(`/admin/listings/${listingId}`);
   revalidatePath("/dashboard");
@@ -152,7 +162,12 @@ export async function deleteListingInWorkspaceAction(
   if (confirmation !== "delete") {
     throw new Error("Type delete to permanently delete this listing.");
   }
+  const listing = await listingService.findByWorkspaceId(workspaceId, listingId);
   await listingService.deleteInWorkspace(workspaceId, listingId);
+  if (listing) {
+    revalidatePublicListing(listing);
+    revalidatePublicListingBySlug(listing.slug);
+  }
   revalidatePath("/admin");
   revalidatePath("/admin/listings");
   revalidatePath("/dashboard");

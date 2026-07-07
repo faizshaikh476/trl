@@ -8,6 +8,7 @@ import {
   updatePlatformBranding,
   uploadPlatformBrandingAsset,
 } from "@/lib/platform/branding";
+import { revalidatePublicBranding } from "@/lib/public/public-listing-cache";
 
 export async function updatePlatformBrandingAction(formData: FormData) {
   await getCurrentAdmin();
@@ -34,7 +35,7 @@ export async function updatePlatformBrandingAction(formData: FormData) {
     socialImageUrl: socialImageUrl || input.socialImageUrl,
   });
 
-  revalidatePath("/", "layout");
+  revalidatePublicBranding();
   revalidatePath("/admin/settings");
   revalidatePath("/login");
   redirect("/admin/settings?saved=branding");
