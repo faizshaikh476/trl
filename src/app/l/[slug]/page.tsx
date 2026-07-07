@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import type { ComponentType } from "react";
+import { cache, type ComponentType } from "react";
 import {
   BadgeCheck,
   CalendarClock,
@@ -45,23 +45,30 @@ export default async function PublicListingPage({
   searchParams: Promise<{ claim?: string; verified?: string; verification?: string }>;
 }) {
   const { slug } = await params;
-  const query = await searchParams;
-  const branding = await getPlatformBranding();
-  const listing = await listingService.findShareableBySlug(slug);
+  const [query, branding, listing] = await Promise.all([
+    searchParams,
+    getCachedPlatformBranding(),
+    getCachedShareableListing(slug),
+  ]);
   if (!listing) notFound();
 
-  const workspace = await workspaceService.findById(listing.workspaceId);
+  const claimLookupPromise = query.claim
+    ? ownerClaimService.lookup(query.claim)
+    : Promise.resolve(null);
+  const verifiedOwnerProfilePromise = listing.ownerProfileId
+    ? getCachedOwnerProfile(listing.workspaceId, listing.ownerProfileId)
+    : Promise.resolve(null);
+  const [workspace, media, user, claimLookup, verifiedOwnerProfile] = await Promise.all([
+    getCachedWorkspace(listing.workspaceId),
+    getCachedListingMedia(listing.workspaceId, listing.id),
+    getAuthenticatedUser(),
+    claimLookupPromise,
+    verifiedOwnerProfilePromise,
+  ]);
   if (!workspace) notFound();
-  const media = await mediaService.listByListing(listing.workspaceId, listing.id);
-  const user = await getAuthenticatedUser();
   const brokerCanEdit = Boolean(user?.workspaceId === listing.workspaceId);
-  const claimLookup = query.claim ? await ownerClaimService.lookup(query.claim) : null;
   const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
   const showVerificationModal = Boolean(claimMatchesListing);
-  const verifiedOwnerProfile =
-    listing.ownerProfileId
-      ? await ownerProfileService.findById(listing.workspaceId, listing.ownerProfileId)
-      : null;
   const isBrokerVerified =
     listing.ownerClaimStatus === "claimed" || verifiedOwnerProfile?.status === "verified";
   const pendingClaimLookup = !isBrokerVerified
@@ -520,15 +527,17 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const branding = await getPlatformBranding();
-  const listing = await listingService.findShareableBySlug(slug);
+  const [branding, listing] = await Promise.all([
+    getCachedPlatformBranding(),
+    getCachedShareableListing(slug),
+  ]);
   if (!listing) {
     return {
       title: `Property not found | ${branding.brandName}`,
     };
   }
 
-  const media = await mediaService.listByListing(listing.workspaceId, listing.id);
+  const media = await getCachedListingMedia(listing.workspaceId, listing.id);
   const image = media[0]?.url;
   const title = listing.seoTitle || listing.title;
   const description =
@@ -555,6 +564,16 @@ export async function generateMetadata({
     },
   };
 }
+
+const getCachedPlatformBranding = cache(() => getPlatformBranding());
+const getCachedShareableListing = cache((slug: string) => listingService.findShareableBySlug(slug));
+const getCachedListingMedia = cache((workspaceId: string, listingId: string) =>
+  mediaService.listByListing(workspaceId, listingId),
+);
+const getCachedWorkspace = cache((workspaceId: string) => workspaceService.findById(workspaceId));
+const getCachedOwnerProfile = cache((workspaceId: string, ownerProfileId: string) =>
+  ownerProfileService.findById(workspaceId, ownerProfileId),
+);
 
 function titleCase(value: string) {
   return value

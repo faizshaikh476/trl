@@ -15,7 +15,10 @@ export interface CurrentUser {
 
 export async function getAuthenticatedUser(): Promise<CurrentUser | null> {
   const cookieStore = await cookies();
-  const token = await verifyFirebaseIdToken(cookieStore.get(SESSION_COOKIE)?.value ?? "");
+  const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
+  if (!sessionToken) return null;
+
+  const token = await verifyFirebaseIdToken(sessionToken);
   if (!token) return null;
 
   const record = await resolveAuthenticatedUserWorkspace(
