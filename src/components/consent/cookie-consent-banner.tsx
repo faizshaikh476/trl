@@ -41,7 +41,7 @@ export function CookieConsentBanner() {
   return (
     <section
       aria-label="Cookie consent"
-      className="fixed inset-x-3 bottom-3 z-[80] mx-auto max-w-3xl rounded-2xl border border-zinc-200 bg-white p-4 text-zinc-950 shadow-2xl sm:bottom-5 sm:p-5"
+      className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-3xl rounded-2xl border border-zinc-200 bg-white p-4 text-zinc-950 shadow-2xl sm:bottom-5 sm:p-5"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>

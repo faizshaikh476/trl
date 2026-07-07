@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FirebaseError } from "firebase/app";
@@ -27,6 +27,7 @@ export function OwnerVerificationModal({
   ownerProfile: OwnerProfile;
 }) {
   const router = useRouter();
+  const phoneLast4 = lastFourDigits(ownerProfile.displayPhone || ownerProfile.phone);
   const [step, setStep] = useState<"details" | "otp">("details");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,25 +92,28 @@ export function OwnerVerificationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid items-end bg-zinc-950/55 px-0 pt-8 backdrop-blur-sm sm:place-items-center sm:px-4 sm:py-6">
-      <div className="trl-modal-max-height flex w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-zinc-200 bg-white shadow-2xl sm:rounded-xl">
-        <div className="shrink-0 border-b border-zinc-100 p-4 sm:p-6">
-          <div className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 sm:size-11">
-            <UserCheck className="size-5" />
+    <div className="fixed inset-0 z-[100] grid items-end bg-zinc-950/55 px-0 pt-5 backdrop-blur-sm sm:place-items-center sm:px-4 sm:py-6">
+      <div className="trl-modal-max-height flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-zinc-200 bg-white shadow-2xl sm:rounded-2xl">
+        <div className="shrink-0 border-b border-zinc-100 px-4 py-3 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 sm:size-11">
+              <UserCheck className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-zinc-950 sm:text-2xl">
+                Verify your broker profile
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-zinc-600 sm:leading-6">
+                OTP goes only to the WhatsApp number that created this listing.
+              </p>
+            </div>
           </div>
-          <h2 className="mt-3 text-xl font-semibold tracking-tight text-zinc-950 sm:mt-4 sm:text-2xl">
-            Verify broker details
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-zinc-600 sm:max-w-md">
-            This private claim step is only for the broker who created this listing from WhatsApp.
-            We will send the OTP to the original WhatsApp number on record.
-          </p>
         </div>
 
         {step === "details" ? (
           <form action={submitDetails} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:space-y-4 sm:p-6">
-              <LockedPhone />
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:space-y-4 sm:p-6">
+              <LockedPhone last4={phoneLast4} />
               <Field label="Full name" name="name" placeholder="Your name" defaultValue={ownerProfile.name} />
               <Field
                 label="Occupation"
@@ -125,58 +129,15 @@ export function OwnerVerificationModal({
                 defaultValue={ownerProfile.email}
               />
               <Field label="Password" name="password" type="password" placeholder="Create password" />
-              <label className="flex gap-3 rounded-md border border-zinc-200 p-3 text-sm leading-6 text-zinc-700">
-                <input
-                  type="checkbox"
-                  name="confirmedOwnership"
-                  required
-                  className="mt-1 size-4 rounded border-zinc-300 text-zinc-950"
-                />
-                <span>I confirm that I am authorised to list and share this property.</span>
-              </label>
-              <label className="flex gap-3 rounded-md border border-zinc-200 p-3 text-sm leading-6 text-zinc-700">
-                <input
-                  type="checkbox"
-                  name="whatsappTransactionalConsent"
-                  required
-                  className="mt-1 size-4 rounded border-zinc-300 text-zinc-950"
-                />
-                <span>
-                  I agree to receive WhatsApp OTPs, listing updates, and enquiry alerts for my TRL
-                  account.
-                </span>
-              </label>
-              <label className="flex gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm leading-6 text-zinc-700">
-                <input
-                  type="checkbox"
-                  name="termsAccepted"
-                  required
-                  className="mt-1 size-4 rounded border-zinc-300 text-zinc-950"
-                />
-                <span>
-                  I accept the{" "}
-                  <Link href="/terms" className="font-medium text-zinc-950 underline-offset-4 hover:underline">
-                    Terms
-                  </Link>
-                  ,{" "}
-                  <Link href="/privacy" className="font-medium text-zinc-950 underline-offset-4 hover:underline">
-                    Privacy Policy
-                  </Link>
-                  , and{" "}
-                  <Link href="/dpdp" className="font-medium text-zinc-950 underline-offset-4 hover:underline">
-                    DPDP notice
-                  </Link>
-                  .
-                </span>
-              </label>
+              <ConsentBlock />
               <Status error={error} message={message} />
             </div>
             <ModalFooter isPending={isPending} label="Send WhatsApp OTP" />
           </form>
         ) : (
           <form action={submitOtp} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:space-y-4 sm:p-6">
-              <LockedPhone />
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:space-y-4 sm:p-6">
+              <LockedPhone last4={phoneLast4} />
               <Field label="OTP" name="otp" inputMode="numeric" placeholder="6 digit code" />
               <Status error={error} message={message ?? "OTP sent on WhatsApp."} />
             </div>
@@ -186,6 +147,11 @@ export function OwnerVerificationModal({
       </div>
     </div>
   );
+}
+
+function lastFourDigits(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits.slice(-4) || "----";
 }
 
 function isEmailAlreadyInUse(error: unknown) {
@@ -206,30 +172,90 @@ function messageForAuthError(error: unknown) {
   return "Unable to verify right now. Please try again.";
 }
 
-function LockedPhone() {
+function LockedPhone({ last4 }: { last4: string }) {
   return (
-    <label className="block">
-      <span className="text-sm font-medium text-zinc-700">WhatsApp number</span>
-      <div className="mt-2 flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-zinc-500">
-        <LockKeyhole className="size-4" />
-        Original WhatsApp number on record
+    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <LockKeyhole className="size-4 shrink-0 text-emerald-700" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">
+              Locked WhatsApp
+            </p>
+            <p className="truncate text-sm text-zinc-600">OTP and ownership stay tied to this number.</p>
+          </div>
+        </div>
+        <div className="shrink-0 rounded-full bg-white px-3 py-1 text-sm font-semibold text-zinc-950 shadow-sm">
+          **** {last4}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function ConsentBlock() {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
+      <p className="text-sm font-semibold text-zinc-950">Before we send OTP</p>
+      <div className="mt-2 space-y-2">
+        <ConsentCheckbox name="confirmedOwnership">
+          I am authorised to list and share this property.
+        </ConsentCheckbox>
+        <ConsentCheckbox name="whatsappTransactionalConsent">
+          Send WhatsApp OTPs, listing updates, and enquiry alerts.
+        </ConsentCheckbox>
+        <ConsentCheckbox name="termsAccepted">
+          I accept the{" "}
+          <Link href="/terms" className="font-medium text-zinc-950 underline-offset-4 hover:underline">
+            Terms
+          </Link>
+          ,{" "}
+          <Link href="/privacy" className="font-medium text-zinc-950 underline-offset-4 hover:underline">
+            Privacy
+          </Link>
+          , and{" "}
+          <Link href="/dpdp" className="font-medium text-zinc-950 underline-offset-4 hover:underline">
+            DPDP notice
+          </Link>
+          .
+        </ConsentCheckbox>
+      </div>
+    </div>
+  );
+}
+
+function ConsentCheckbox({
+  name,
+  children,
+}: {
+  name: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex gap-2.5 text-sm leading-5 text-zinc-700">
+      <input
+        type="checkbox"
+        name={name}
+        required
+        className="mt-0.5 size-4 shrink-0 rounded border-zinc-300 text-zinc-950"
+      />
+      <span>{children}</span>
     </label>
   );
 }
 
 function ModalFooter({ isPending, label }: { isPending: boolean; label: string }) {
   return (
-    <div className="shrink-0 border-t border-zinc-100 bg-zinc-50 px-4 py-3 sm:px-6 sm:py-4">
+    <div className="shrink-0 border-t border-zinc-100 bg-white px-4 py-3 shadow-[0_-12px_32px_rgba(24,24,27,0.08)] sm:px-6 sm:py-4">
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 sm:justify-start">
-        <BadgeCheck className="size-4 text-emerald-700" />
-        One-time verification
-      </div>
-      <Button type="submit" className="h-11 w-full bg-zinc-950 text-white hover:bg-zinc-800 sm:w-auto" disabled={isPending}>
-        {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-        {label}
-      </Button>
+        <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 sm:justify-start">
+          <BadgeCheck className="size-4 text-emerald-700" />
+          Verified once for future listings
+        </div>
+        <Button type="submit" className="h-11 w-full bg-zinc-950 text-white hover:bg-zinc-800 sm:w-auto" disabled={isPending}>
+          {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
+          {label}
+        </Button>
       </div>
     </div>
   );
@@ -266,7 +292,7 @@ function Field({
         required
         defaultValue={defaultValue}
         placeholder={placeholder}
-        className="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-base text-zinc-950 outline-none transition focus:border-zinc-950 sm:py-3"
+        className="mt-1.5 w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-base text-zinc-950 outline-none transition focus:border-zinc-950 sm:py-3"
       />
     </label>
   );
