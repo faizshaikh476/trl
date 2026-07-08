@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { ListingForm } from "@/components/listings/listing-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
@@ -20,11 +21,11 @@ export default async function AdminListingReviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ workspaceId?: string }>;
+  searchParams: Promise<{ workspaceId?: string; error?: string }>;
 }) {
   await getCurrentAdmin();
   const { id } = await params;
-  const { workspaceId } = await searchParams;
+  const { workspaceId, error } = await searchParams;
   const workspaces = workspaceId ? [] : await workspaceService.list();
   const listing = workspaceId
     ? await listingService.findByWorkspaceId(workspaceId, id)
@@ -45,6 +46,15 @@ export default async function AdminListingReviewPage({
   return (
     <AdminShell active="Listings">
       <div className="space-y-6">
+        {error === "listing-limit" ? (
+          <Alert className="border-amber-300/30 bg-amber-300/10 text-amber-50">
+            <AlertTitle>Plan limit reached</AlertTitle>
+            <AlertDescription className="text-amber-100/80">
+              This workspace has used all live listing slots. Assign a larger plan or archive a published listing before publishing another one.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <Button asChild variant="ghost" size="sm" className="text-slate-300 hover:text-white">
           <Link href="/admin/listings">
             <ArrowLeft className="size-4" />

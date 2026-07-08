@@ -40,6 +40,18 @@ export class FirestoreWorkspaceRepository implements WorkspaceRepository {
     if (!updated.exists) throw new Error("Workspace not found");
     return { id: updated.id, ...updated.data() } as Workspace;
   }
+
+  async updatePlan(id: string, planId: string) {
+    const ref = getAdminDb().doc(firestorePaths.workspace(id));
+    await ref.update({
+      planId,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const updated = await ref.get();
+    if (!updated.exists) throw new Error("Workspace not found");
+    return { id: updated.id, ...updated.data() } as Workspace;
+  }
 }
 
 export const firestoreWorkspaceRepository = new FirestoreWorkspaceRepository();

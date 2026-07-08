@@ -10,4 +10,5 @@ export interface WorkspaceRepository {
   findBySlug(slug: string): Promise<Workspace | null>;
   findById(id: string): Promise<Workspace | null>;
   updateProfile(id: string, input: WorkspaceProfileInput): Promise<Workspace>;
+  updatePlan(id: string, planId: string): Promise<Workspace>;
 }

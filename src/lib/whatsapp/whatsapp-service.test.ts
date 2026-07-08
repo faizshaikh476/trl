@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { defaultPlans, ListingPlanLimitError } from "@/lib/billing/billing-service";
 import type { ListingExtraction } from "@/lib/listings/listing.schema";
 import type { Listing } from "@/types/domain";
 import { MockWhatsAppProvider } from "./providers/mock-provider";
@@ -97,6 +98,7 @@ describe("WhatsAppService intake cues", () => {
       listingService: listings,
       ownerProfileService: owners,
       ownerClaimService: claims,
+      billingService: createUnlimitedBillingService(),
       saveMediaAssets,
     });
     const provider = new MockWhatsAppProvider();
@@ -216,6 +218,7 @@ describe("WhatsAppService intake cues", () => {
       listingService: listings,
       ownerProfileService: owners,
       ownerClaimService: claims,
+      billingService: createUnlimitedBillingService(),
       saveMediaAssets: vi.fn().mockResolvedValue([]),
     });
     const provider = new MockWhatsAppProvider();
@@ -288,6 +291,7 @@ describe("WhatsAppService intake cues", () => {
       listingService: listings,
       ownerProfileService: owners,
       ownerClaimService: claims,
+      billingService: createUnlimitedBillingService(),
       saveMediaAssets,
     });
 
@@ -351,6 +355,49 @@ describe("WhatsAppService intake cues", () => {
     expect(result.reply).toContain("share the property details");
   });
 
+  it("asks the broker to upgrade when the workspace has reached its live listing limit", async () => {
+    const store = createMemorySessionStore();
+    const ai = { extractListing: vi.fn() };
+    const listings = { createFromExtraction: vi.fn() };
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      aiListingService: ai,
+      listingService: listings,
+      billingService: {
+        assertCanPublish: vi.fn().mockRejectedValue(
+          new ListingPlanLimitError({
+            plan: { ...defaultPlans[0], activeListingLimit: 1 },
+            activeListings: 1,
+            limit: 1,
+            remaining: 0,
+            isAtLimit: true,
+          }),
+        ),
+      },
+    });
+    const provider = new MockWhatsAppProvider();
+
+    await service.handleWebhook(
+      {
+        text: "2 BHK for rent in Wakad, 29000 rent",
+        from: "917276709161",
+      },
+      provider,
+    );
+    const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
+    const session = await store.getActiveSession("workspace_broker_917276709161", "917276709161");
+
+    expect(done.status).toBe("plan_limit_reached");
+    expect(done.reply).toContain("Starter plan limit");
+    expect(done.reply).toContain("archive an older property");
+    expect(done.followUp).toBeUndefined();
+    expect(ai.extractListing).not.toHaveBeenCalled();
+    expect(listings.createFromExtraction).not.toHaveBeenCalled();
+    expect(session?.status).toBe("collecting");
+  });
+
   it("ignores duplicate Meta deliveries for the same inbound message id", async () => {
     const processedMessageStore = createMemoryProcessedMessageStore();
     const service = new WhatsAppService({
@@ -378,6 +425,7 @@ describe("WhatsAppService intake cues", () => {
       sessionStore: createMemorySessionStore(),
       processedMessageStore: createMemoryProcessedMessageStore(),
       brokerWorkspaceService: createBrokerWorkspaceService(),
+      billingService: createUnlimitedBillingService(),
     });
     const provider = new MockWhatsAppProvider();
 
@@ -648,5 +696,17 @@ function createMemoryProcessedMessageStore() {
       seen.add(key);
       return true;
     },
+  };
+}
+
+function createUnlimitedBillingService() {
+  return {
+    assertCanPublish: vi.fn().mockResolvedValue({
+      plan: defaultPlans[0],
+      activeListings: 0,
+      limit: defaultPlans[0].activeListingLimit,
+      remaining: defaultPlans[0].activeListingLimit,
+      isAtLimit: false,
+    }),
   };
 }

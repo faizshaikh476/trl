@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/dashboard/app-shell";
 import { ListingForm } from "@/components/listings/listing-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { formatRupees } from "@/lib/format";
@@ -27,10 +28,13 @@ const EDIT_FORM_ID = "listing-studio-form";
 
 export default async function EditListingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
   const user = await getCurrentUser();
   const listing = await listingService.findByWorkspaceId(user.workspaceId!, id);
 
@@ -44,6 +48,15 @@ export default async function EditListingPage({
   return (
     <AppShell active="Listings" tone="light">
       <div className="space-y-6 pb-12">
+        {query.error === "listing-limit" ? (
+          <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+            <AlertTitle>Plan limit reached</AlertTitle>
+            <AlertDescription className="text-amber-800">
+              Archive, sell, or rent an older live listing to free up a slot, or upgrade your plan to publish more properties.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button asChild variant="ghost" size="sm" className="text-stone-600 hover:bg-stone-100 hover:text-stone-950">
             <Link href="/dashboard/listings">

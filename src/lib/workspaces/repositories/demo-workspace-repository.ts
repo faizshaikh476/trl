@@ -22,6 +22,15 @@ export class DemoWorkspaceRepository implements WorkspaceRepository {
       updatedAt: new Date().toISOString(),
     };
   }
+
+  async updatePlan(id: string, planId: string) {
+    if (demoWorkspace.id !== id) throw new Error("Workspace not found");
+    return {
+      ...demoWorkspace,
+      planId,
+      updatedAt: new Date().toISOString(),
+    };
+  }
 }
 
 export const demoWorkspaceRepository = new DemoWorkspaceRepository();

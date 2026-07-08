@@ -1,4 +1,5 @@
 import { aiListingService } from "@/lib/ai/ai-service";
+import { billingService, ListingPlanLimitError } from "@/lib/billing/billing-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { ownerClaimService } from "@/lib/claims/owner-claim-service";
@@ -29,6 +30,8 @@ const EMPTY_DONE_REPLY = "📌 Please share the property details, location, pric
 const PROCESSING_REPLY = "⏳ Got it! Give me ~30 seconds to grab all your photos and build the page...";
 const FAILED_REPLY =
   "⚠️ I couldn’t create the property page from this message. Please try again with the property details, price, location, and photos.";
+const PLAN_LIMIT_FALLBACK_REPLY =
+  "🚦 You’ve reached your live listing limit.\n\nPlease archive an older property or upgrade your plan before publishing another listing.";
 const FINAL_SESSION_SETTLE_MS = 2500;
 
 export type WhatsAppOutboundMessage =
@@ -42,6 +45,7 @@ interface WhatsAppServiceDependencies {
   listingService: typeof listingService;
   ownerProfileService: typeof ownerProfileService;
   ownerClaimService: typeof ownerClaimService;
+  billingService: typeof billingService;
   saveMediaAssets: typeof saveIncomingMediaAssets;
   brokerWorkspaceService: WhatsAppBrokerWorkspaceService;
 }
@@ -70,6 +74,7 @@ export class WhatsAppService {
       listingService: dependencies.listingService ?? listingService,
       ownerProfileService: dependencies.ownerProfileService ?? ownerProfileService,
       ownerClaimService: dependencies.ownerClaimService ?? ownerClaimService,
+      billingService: dependencies.billingService ?? billingService,
       saveMediaAssets: dependencies.saveMediaAssets ?? saveIncomingMediaAssets,
       brokerWorkspaceService: dependencies.brokerWorkspaceService ?? firestoreWhatsAppBrokerWorkspaceService,
     };
@@ -123,6 +128,18 @@ export class WhatsAppService {
         return { status: "collecting", to: message.from, reply: EMPTY_DONE_REPLY };
       }
 
+      try {
+        await this.dependencies.billingService.assertCanPublish(message.workspaceId);
+      } catch (error) {
+        if (error instanceof ListingPlanLimitError) {
+          return {
+            status: "plan_limit_reached",
+            to: message.from,
+            reply: planLimitReply(error.usage.plan.name, error.usage.activeListings, error.usage.limit),
+          };
+        }
+        throw error;
+      }
       await this.dependencies.sessionStore.markProcessing(message.workspaceId, message.from);
       return {
         status: "processing_started",
@@ -182,6 +199,7 @@ export class WhatsAppService {
       if (!session || (!session.messages.length && !session.media.length)) {
         return { status: "draft_failed", to: message.from, reply: EMPTY_DONE_REPLY };
       }
+      await this.dependencies.billingService.assertCanPublish(message.workspaceId);
       const sessionText = session.messages.join("\n\n");
       const sessionMedia = onlyImageMedia(session.media);
       const resolvedMedia = await resolveIncomingMedia(provider, {
@@ -367,6 +385,11 @@ function onlyImageMedia(media: ParsedWhatsAppMessage["media"]) {
 
 function welcomeBackReply(name: string) {
   return `👋 Welcome back, ${name}!\n\nSend me your next property and I’ll take care of the page.\n\n🏡 Property: flat/shop/office, BHK, area, floor\n📍 Location: society, locality, city\n💰 Price/rent: deposit, brokerage if any\n✨ Highlights: amenities, furnishing, parking, view\n📸 Photos: rooms, kitchen, bathrooms, balcony/garden\n\nWhen everything is shared, type DONE.`;
+}
+
+function planLimitReply(planName: string, activeListings: number, limit: number) {
+  if (!planName || !limit) return PLAN_LIMIT_FALLBACK_REPLY;
+  return `🚦 You’ve reached your ${planName} plan limit.\n\nYou have ${activeListings}/${limit} live listings.\n\nPlease archive an older property from your dashboard or upgrade your plan to publish more.`;
 }
 
 function safeMessageId(messageId: string) {

@@ -45,8 +45,19 @@ export interface Workspace {
   contactEmail: string;
   websiteTheme: "premium" | "minimal" | "editorial";
   customDomain: string | null;
-  planId: "starter" | "pro" | "agency";
+  planId: string;
   status: "active" | "suspended";
+  createdAt: TimestampString;
+  updatedAt: TimestampString;
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  priceLabel: string;
+  activeListingLimit: number;
+  status: "active" | "inactive";
+  sortOrder: number;
   createdAt: TimestampString;
   updatedAt: TimestampString;
 }

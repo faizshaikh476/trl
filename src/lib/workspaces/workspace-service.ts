@@ -19,6 +19,10 @@ export class WorkspaceService {
   updateProfile(id: string, input: WorkspaceProfileInput) {
     return this.repository.updateProfile(id, input);
   }
+
+  updatePlan(id: string, planId: string) {
+    return this.repository.updatePlan(id, planId);
+  }
 }
 
 export const workspaceService = new WorkspaceService();

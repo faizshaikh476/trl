@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser, getCurrentAdmin, getCurrentUser } from "@/lib/auth/current-user";
+import { billingService, ListingPlanLimitError } from "@/lib/billing/billing-service";
 import { manualListingSchema } from "@/lib/listings/listing.schema";
 import { listingService } from "@/lib/listings/listing-service";
 import {
@@ -126,6 +127,9 @@ export async function updateListingStatusAction(listingId: string, status: Listi
   const listing = await getListingForMutation(listingId, user.workspaceId ?? undefined);
   if (!listing) throw new Error("Listing not found");
   requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_PUBLISH);
+  if (status === "published") {
+    await assertCanPublishOrRedirect(listing, `/dashboard/listings/${listingId}?error=listing-limit`);
+  }
   const updated = await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
   revalidatePublicListing(updated);
   revalidatePath("/dashboard");
@@ -143,12 +147,28 @@ export async function updateListingStatusInWorkspaceAction(
   const listing = await getListingForMutation(listingId, workspaceId);
   if (!listing) throw new Error("Listing not found");
   requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_PUBLISH);
+  if (status === "published") {
+    await assertCanPublishOrRedirect(
+      listing,
+      `/admin/listings/${listingId}?workspaceId=${workspaceId}&error=listing-limit`,
+    );
+  }
   const updated = await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
   revalidatePublicListing(updated);
   revalidatePath("/admin/listings");
   revalidatePath(`/admin/listings/${listingId}`);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
+}
+
+async function assertCanPublishOrRedirect(listing: Awaited<ReturnType<typeof getListingForMutation>>, redirectTo: string) {
+  if (!listing) throw new Error("Listing not found");
+  try {
+    await billingService.assertCanPublish(listing.workspaceId, listing);
+  } catch (error) {
+    if (error instanceof ListingPlanLimitError) redirect(redirectTo);
+    throw error;
+  }
 }
 
 export async function deleteListingInWorkspaceAction(

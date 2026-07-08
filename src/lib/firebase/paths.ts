@@ -32,4 +32,6 @@ export const firestorePaths = {
   ownerClaimToken: (token: string) => `ownerClaimTokens/${token}`,
   platformAdmin: (userId: string) => `platformAdmins/${userId}`,
   platformSetting: (settingId: string) => `platformSettings/${settingId}`,
+  plans: () => "plans",
+  plan: (planId: string) => `plans/${planId}`,
 };

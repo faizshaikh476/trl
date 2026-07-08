@@ -15,6 +15,7 @@ export default async function AdminPage() {
   const primaryWorkspace = workspaces[0];
   const listings = primaryWorkspace ? await listingService.listByWorkspace(primaryWorkspace.id) : [];
   const leads = primaryWorkspace ? await leadService.listByWorkspace(primaryWorkspace.id) : [];
+  const plans = await billingService.listPlans();
 
   return (
     <AdminShell active="Overview">
@@ -68,11 +69,11 @@ export default async function AdminPage() {
                 <Badge className="bg-cyan-300 text-slate-950">Razorpay-ready</Badge>
               </div>
               <div className="mt-5 space-y-3">
-                {billingService.listPlans().map((plan) => (
+                {plans.map((plan) => (
                   <div key={plan.id} className="flex items-center justify-between">
                     <span>{plan.name}</span>
                     <span className="text-slate-400">
-                      {plan.activeListings} listings · {plan.price}
+                      {plan.activeListingLimit} listings · {plan.priceLabel}
                     </span>
                   </div>
                 ))}
