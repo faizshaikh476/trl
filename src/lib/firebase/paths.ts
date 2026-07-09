@@ -28,10 +28,17 @@ export const firestorePaths = {
   workspaceAiGenerations: (workspaceId: string) =>
     `workspaces/${workspaceId}/aiGenerations`,
   workspaceSettings: (workspaceId: string) => `workspaces/${workspaceId}/settings`,
+  workspaceWallet: (workspaceId: string) => `workspaces/${workspaceId}/billing/wallet`,
+  workspaceCreditLedger: (workspaceId: string) =>
+    `workspaces/${workspaceId}/creditLedger`,
+  workspaceCreditEntry: (workspaceId: string, entryId: string) =>
+    `workspaces/${workspaceId}/creditLedger/${entryId}`,
   publicListing: (slug: string) => `publicListingIndex/${slug}`,
   ownerClaimToken: (token: string) => `ownerClaimTokens/${token}`,
   platformAdmin: (userId: string) => `platformAdmins/${userId}`,
   platformSetting: (settingId: string) => `platformSettings/${settingId}`,
   plans: () => "plans",
   plan: (planId: string) => `plans/${planId}`,
+  purchases: () => "purchases",
+  purchase: (purchaseId: string) => `purchases/${purchaseId}`,
 };

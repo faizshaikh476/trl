@@ -71,6 +71,53 @@ export interface Plan {
   updatedAt: TimestampString;
 }
 
+export interface CreditWallet {
+  availableCredits: number;
+  validUntil: TimestampString;
+  lastPurchaseId: string | null;
+  createdAt: TimestampString;
+  updatedAt: TimestampString;
+}
+
+export type CreditGrantSourceType =
+  | "purchase"
+  | "promotion"
+  | "migration"
+  | "onboarding";
+
+export interface CreditLedgerEntry {
+  id: string;
+  workspaceId: string;
+  type: "grant" | "consume";
+  quantity: number;
+  sourceType: CreditGrantSourceType | "listing";
+  sourceId: string;
+  listingId: string | null;
+  reason: string;
+  createdAt: TimestampString;
+}
+
+export interface CreditPurchase {
+  id: string;
+  workspaceId: string;
+  planId: string;
+  quantity: number;
+  validityDays: number;
+  amountPaise: number;
+  currency: "INR";
+  status: "pending" | "paid" | "failed" | "refunded";
+  provider: "razorpay";
+  providerOrderId: string | null;
+  providerPaymentId: string | null;
+  providerRefundId: string | null;
+  providerEventIds: string[];
+  failureReason: string | null;
+  paidAt: TimestampString | null;
+  refundedAt: TimestampString | null;
+  createdAt: TimestampString;
+  updatedAt: TimestampString;
+}
+
 export interface Listing {
   id: string;
   workspaceId: string;
