@@ -1,10 +1,10 @@
 import type React from "react";
-import { CreditCard, ListChecks, Plus, Trash2 } from "lucide-react";
+import { CreditCard, ListChecks, Plus, Sparkles, Trash2 } from "lucide-react";
 import { AdminSectionPage } from "@/components/admin/admin-section-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
-import { billingService } from "@/lib/billing/billing-service";
+import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import { createPlanAction, deletePlanAction, updatePlanAction } from "@/server-actions/billing-actions";
 import type { Plan } from "@/types/domain";
@@ -21,22 +21,22 @@ export default async function AdminSubscriptionsPage() {
   return (
     <AdminSectionPage
       active="Subscriptions"
-      title="Plans"
-      description="Build plans and control how many live property pages each broker workspace can publish."
+      title="Listing packages"
+      description="Build listing-credit packages and control how long purchased credits and published listings stay active."
       cards={[
         {
-          title: "Listing allowance",
-          description: "Only published listings count towards a plan limit.",
-          status: "Published",
+          title: "Credit wallet",
+          description: "Publishing a new listing consumes one purchased or granted credit.",
+          status: "Credits",
         },
         {
-          title: "Active plans",
+          title: "Active packages",
           description: `${activePlans} plan${activePlans === 1 ? "" : "s"} available for workspace assignment.`,
           status: "Available",
         },
         {
-          title: "Billing",
-          description: "Set the price shown for each plan.",
+          title: "Validity",
+          description: "Package credits and listing visibility are configured per plan.",
           status: "Pricing",
         },
       ]}
@@ -49,21 +49,35 @@ export default async function AdminSubscriptionsPage() {
                 <Plus className="size-5" />
               </span>
               <div>
-                <h2 className="text-lg font-semibold">Create plan</h2>
-                <p className="text-sm text-slate-400">Add a plan with a live listing limit.</p>
+                <h2 className="text-lg font-semibold">Create package</h2>
+                <p className="text-sm text-slate-400">Add a one-time listing-credit package.</p>
               </div>
             </div>
             <Button type="submit" className="w-full bg-cyan-300 text-slate-950 hover:bg-cyan-200 sm:w-auto">
-              Create plan
+              Create package
             </Button>
           </div>
 
           <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Field label="Plan name" name="name" placeholder="Growth" required />
-            <Field label="Price label" name="priceLabel" placeholder="₹7,999/mo" required />
-            <Field label="Published listing limit" name="activeListingLimit" type="number" min="1" defaultValue="50" required />
+            <Field label="Amount in rupees" name="amountRupees" type="text" inputMode="decimal" placeholder="7999" required />
+            <Field label="Listing credits" name="listingCredits" type="number" min="1" defaultValue="50" required />
+            <Field label="Credit validity days" name="creditValidityDays" type="number" min="1" defaultValue="30" required />
+            <Field label="Listing visibility days" name="listingVisibilityDays" type="number" min="1" defaultValue="60" required />
             <Field label="Sort order" name="sortOrder" type="number" defaultValue="40" required />
-            <input type="hidden" name="status" value="active" />
+            <TextArea label="Description" name="description" placeholder="For growing broker teams" />
+            <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-300">
+              Status
+              <select name="status" defaultValue="active" className="h-10 min-w-0 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+            <label className="flex h-10 min-w-0 items-center gap-2 self-end rounded-md border border-white/10 bg-slate-950 px-3 text-sm font-medium text-slate-300">
+              <input name="featured" type="checkbox" value="true" className="size-4 accent-cyan-300" />
+              Featured
+            </label>
+            <input type="hidden" name="currency" value="INR" />
           </div>
         </form>
 
@@ -76,10 +90,10 @@ export default async function AdminSubscriptionsPage() {
         <div className="rounded-lg border border-cyan-300/10 bg-white/[0.06] p-5 text-white">
           <div className="flex items-center gap-3">
             <CreditCard className="size-5 text-cyan-200" />
-            <h2 className="text-lg font-semibold">Upgrade behaviour</h2>
+            <h2 className="text-lg font-semibold">Package behaviour</h2>
           </div>
           <p className="mt-3 text-sm leading-6 text-slate-400">
-            When a broker reaches their live listing limit, WhatsApp and dashboard publishing both ask them to archive an older listing or upgrade.
+            Prices and credit quantities are resolved server-side. Publishing consumes a credit once; reactivation depends on an active wallet.
           </p>
         </div>
       </section>
@@ -104,8 +118,9 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
               {isAssigned ? <Badge variant="secondary">assigned</Badge> : null}
             </div>
             <p className="mt-1 text-sm text-slate-400">
-              {plan.activeListingLimit} published listings · {plan.priceLabel}
+              {plan.listingCredits} credits · {formatPlanPrice(plan)} · {plan.creditValidityDays} day wallet
             </p>
+            {plan.description ? <p className="mt-2 max-w-2xl text-sm text-slate-400">{plan.description}</p> : null}
           </div>
         </div>
         <p className="text-xs text-slate-500">ID: {plan.id}</p>
@@ -113,9 +128,12 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
 
       <form action={updatePlanAction.bind(null, plan.id)} className="mt-5 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field label="Name" name="name" defaultValue={plan.name} required />
-        <Field label="Price" name="priceLabel" defaultValue={plan.priceLabel} required />
-        <Field label="Live limit" name="activeListingLimit" type="number" min="1" defaultValue={String(plan.activeListingLimit)} required />
-        <Field label="Sort" name="sortOrder" type="number" defaultValue={String(plan.sortOrder)} required />
+        <Field label="Amount in rupees" name="amountRupees" type="text" inputMode="decimal" defaultValue={paiseToRupees(plan.amountPaise)} required />
+        <Field label="Listing credits" name="listingCredits" type="number" min="1" defaultValue={String(plan.listingCredits)} required />
+        <Field label="Credit validity days" name="creditValidityDays" type="number" min="1" defaultValue={String(plan.creditValidityDays)} required />
+        <Field label="Listing visibility days" name="listingVisibilityDays" type="number" min="1" defaultValue={String(plan.listingVisibilityDays)} required />
+        <Field label="Order" name="sortOrder" type="number" defaultValue={String(plan.sortOrder)} required />
+        <TextArea label="Description" name="description" defaultValue={plan.description} />
         <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-300">
           Status
           <select name="status" defaultValue={plan.status} className="h-10 min-w-0 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white">
@@ -123,6 +141,12 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
             <option value="inactive">Inactive</option>
           </select>
         </label>
+        <label className="flex h-10 min-w-0 items-center gap-2 self-end rounded-md border border-white/10 bg-slate-950 px-3 text-sm font-medium text-slate-300">
+          <input name="featured" type="checkbox" value="true" defaultChecked={plan.featured} className="size-4 accent-cyan-300" />
+          <Sparkles className="size-4 text-cyan-200" />
+          Featured
+        </label>
+        <input type="hidden" name="currency" value="INR" />
         <div className="flex min-w-0 items-end md:col-span-2 xl:col-span-1">
           <Button type="submit" className="w-full bg-cyan-300 text-slate-950 hover:bg-cyan-200">
             Save
@@ -165,4 +189,23 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
       />
     </label>
   );
+}
+
+function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string }) {
+  const { label, ...textareaProps } = props;
+  return (
+    <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-300 sm:col-span-2 xl:col-span-1">
+      {label}
+      <textarea
+        {...textareaProps}
+        className="min-h-10 min-w-0 rounded-md border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600"
+      />
+    </label>
+  );
+}
+
+function paiseToRupees(amountPaise: number) {
+  const rupees = Math.trunc(amountPaise / 100);
+  const paise = Math.abs(amountPaise % 100);
+  return paise ? `${rupees}.${String(paise).padStart(2, "0")}` : String(rupees);
 }

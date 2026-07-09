@@ -9,6 +9,7 @@ import type { Listing, Plan, Workspace } from "@/types/domain";
 
 export type PlanInput = {
   name: string;
+  description?: string;
   amountPaise: number;
   currency: Plan["currency"];
   listingCredits: number;
@@ -79,7 +80,8 @@ export class BillingService {
       id: planId,
       name: input.name,
       description:
-        typeof existingData.description === "string" ? existingData.description : "",
+        input.description ??
+        (typeof existingData.description === "string" ? existingData.description : ""),
       amountPaise: input.amountPaise,
       currency: input.currency,
       listingCredits: input.listingCredits,
