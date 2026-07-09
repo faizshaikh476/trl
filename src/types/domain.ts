@@ -54,8 +54,13 @@ export interface Workspace {
 export interface Plan {
   id: string;
   name: string;
-  priceLabel: string;
-  activeListingLimit: number;
+  description: string;
+  amountPaise: number;
+  currency: "INR";
+  listingCredits: number;
+  creditValidityDays: number;
+  listingVisibilityDays: number;
+  featured: boolean;
   status: "active" | "inactive";
   sortOrder: number;
   createdAt: TimestampString;

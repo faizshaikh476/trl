@@ -6,8 +6,12 @@ import type { Listing, Plan, Workspace } from "@/types/domain";
 
 export type PlanInput = {
   name: string;
-  priceLabel: string;
-  activeListingLimit: number;
+  amountPaise: number;
+  currency: Plan["currency"];
+  listingCredits: number;
+  creditValidityDays: number;
+  listingVisibilityDays: number;
+  featured: boolean;
   status: Plan["status"];
   sortOrder: number;
 };
@@ -21,9 +25,9 @@ export type PlanUsage = {
 };
 
 export const defaultPlans: Plan[] = [
-  makeDefaultPlan("starter", "Starter", "₹1,999/mo", 25, 10),
-  makeDefaultPlan("pro", "Pro", "₹4,999/mo", 100, 20),
-  makeDefaultPlan("agency", "Agency", "Custom", 500, 30),
+  makeDefaultPlan("starter", "Starter", "Starter listing credit package", 199900, 25, 30, 30, false, 10),
+  makeDefaultPlan("pro", "Pro", "Pro listing credit package", 499900, 100, 30, 45, true, 20),
+  makeDefaultPlan("agency", "Agency", "Agency listing credit package", 999900, 500, 30, 60, true, 30),
 ];
 
 export class ListingPlanLimitError extends Error {
@@ -67,8 +71,13 @@ export class BillingService {
     const plan: Plan = {
       id: planId,
       name: input.name,
-      priceLabel: input.priceLabel,
-      activeListingLimit: input.activeListingLimit,
+      description: existing.exists ? ((existing.data() as Plan).description ?? "") : "",
+      amountPaise: input.amountPaise,
+      currency: input.currency,
+      listingCredits: input.listingCredits,
+      creditValidityDays: input.creditValidityDays,
+      listingVisibilityDays: input.listingVisibilityDays,
+      featured: input.featured,
       status: input.status,
       sortOrder: input.sortOrder,
       createdAt: existing.exists ? ((existing.data() as Plan).createdAt ?? now) : now,
@@ -128,7 +137,7 @@ export function selectDefaultPlanId(plans: Plan[]) {
 
 export function calculatePlanUsage(plan: Plan, listings: Listing[]): PlanUsage {
   const activeListings = listings.filter((listing) => listing.status === "published").length;
-  const limit = Math.max(0, plan.activeListingLimit);
+  const limit = Math.max(0, plan.listingCredits);
   return {
     plan,
     activeListings,
@@ -139,22 +148,54 @@ export function calculatePlanUsage(plan: Plan, listings: Listing[]): PlanUsage {
 }
 
 export function parsePlanInput(formData: FormData): PlanInput {
-  const activeListingLimit = Number(formData.get("activeListingLimit"));
+  const amountPaise = positiveWholeNumber(
+    formData,
+    "amountPaise",
+    "Amount must be a positive whole number.",
+  );
+  const currency = requiredCurrency(formData);
+  const listingCredits = positiveWholeNumber(
+    formData,
+    "listingCredits",
+    "Listing credits must be a positive whole number.",
+  );
+  const creditValidityDays = positiveWholeNumber(
+    formData,
+    "creditValidityDays",
+    "Credit validity must be a positive whole number of days.",
+  );
+  const listingVisibilityDays = positiveWholeNumber(
+    formData,
+    "listingVisibilityDays",
+    "Listing visibility must be a positive whole number of days.",
+  );
+  const featured = booleanInput(formData.get("featured"));
   const sortOrder = Number(formData.get("sortOrder") ?? 100);
   const status = String(formData.get("status") ?? "active");
-  if (!Number.isInteger(activeListingLimit) || activeListingLimit < 1) {
-    throw new Error("Listing limit must be a positive whole number.");
-  }
   if (!Number.isFinite(sortOrder)) throw new Error("Sort order must be a number.");
   if (status !== "active" && status !== "inactive") throw new Error("Invalid plan status.");
 
   return {
     name: requiredString(formData, "name"),
-    priceLabel: requiredString(formData, "priceLabel"),
-    activeListingLimit,
+    amountPaise,
+    currency,
+    listingCredits,
+    creditValidityDays,
+    listingVisibilityDays,
+    featured,
     status,
     sortOrder,
   };
+}
+
+export function formatPlanPrice(plan: Plan) {
+  const rupees = plan.amountPaise / 100;
+  const hasFraction = plan.amountPaise % 100 !== 0;
+  const formatted = new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: hasFraction ? 2 : 0,
+  }).format(rupees);
+  return `${plan.currency} ${formatted}`;
 }
 
 export function planIdFromName(name: string) {
@@ -172,19 +213,46 @@ function requiredString(formData: FormData, key: string) {
   return value;
 }
 
+function requiredCurrency(formData: FormData): Plan["currency"] {
+  const value = requiredString(formData, "currency").toUpperCase();
+  if (value !== "INR") throw new Error("Currency must be INR.");
+  return value;
+}
+
+function positiveWholeNumber(formData: FormData, key: string, errorMessage: string) {
+  const value = Number(formData.get(key));
+  if (!Number.isInteger(value) || value < 1) throw new Error(errorMessage);
+  return value;
+}
+
+function booleanInput(value: FormDataEntryValue | null) {
+  if (value == null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "on";
+}
+
 function makeDefaultPlan(
   id: string,
   name: string,
-  priceLabel: string,
-  activeListingLimit: number,
+  description: string,
+  amountPaise: number,
+  listingCredits: number,
+  creditValidityDays: number,
+  listingVisibilityDays: number,
+  featured: boolean,
   sortOrder: number,
 ): Plan {
   const now = "2026-01-01T00:00:00.000Z";
   return {
     id,
     name,
-    priceLabel,
-    activeListingLimit,
+    description,
+    amountPaise,
+    currency: "INR",
+    listingCredits,
+    creditValidityDays,
+    listingVisibilityDays,
+    featured,
     status: "active",
     sortOrder,
     createdAt: now,
