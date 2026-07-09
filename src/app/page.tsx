@@ -20,6 +20,8 @@ import {
   UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PricingSection } from "@/components/public/pricing-section";
+import { billingService } from "@/lib/billing/billing-service";
 import { getPlatformBranding } from "@/lib/platform/branding";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +51,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Home() {
-  const branding = await getPlatformBranding();
+  const [branding, plans] = await Promise.all([
+    getPlatformBranding(),
+    billingService.listActivePlans(),
+  ]);
   const sampleListingHref = "/sample-listing";
 
   return (
@@ -268,6 +273,8 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      <PricingSection plans={plans} />
 
       <section className="bg-[#eafaf1] px-4 py-12 text-zinc-950 sm:px-6 sm:py-20">
         <div className="mx-auto max-w-4xl text-center">
