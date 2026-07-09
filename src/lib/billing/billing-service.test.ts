@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Listing, Plan } from "@/types/domain";
 
 const mocks = vi.hoisted(() => {
+  const collectionGet = vi.fn();
   const planDocGet = vi.fn();
   const planDocSet = vi.fn();
   const planDocDelete = vi.fn();
@@ -11,11 +12,14 @@ const mocks = vi.hoisted(() => {
     delete: planDocDelete,
   };
   const getAdminDb = vi.fn(() => ({
-    collection: vi.fn(),
+    collection: vi.fn(() => ({
+      get: collectionGet,
+    })),
     doc: vi.fn(() => planDocRef),
   }));
 
   return {
+    collectionGet,
     planDocGet,
     planDocSet,
     planDocDelete,
@@ -51,6 +55,7 @@ import {
 } from "./billing-service";
 
 beforeEach(() => {
+  mocks.collectionGet.mockReset();
   mocks.planDocGet.mockReset();
   mocks.planDocSet.mockReset();
   mocks.planDocDelete.mockReset();
@@ -322,6 +327,71 @@ describe("BillingService.upsertPlan", () => {
       }),
       { merge: true },
     );
+  });
+});
+
+describe("BillingService legacy record normalization", () => {
+  it("lists existing Custom plans without failing strict create parsing", async () => {
+    mocks.collectionGet.mockResolvedValue({
+      docs: [
+        {
+          id: "agency",
+          data: () => ({
+            name: "Agency",
+            description: "Legacy custom plan",
+            priceLabel: "Custom",
+            activeListingLimit: 500,
+            status: "inactive",
+            sortOrder: 30,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-02T00:00:00.000Z",
+          }),
+        },
+      ],
+    });
+
+    const plans = await new BillingService().listPlans();
+
+    expect(plans).toEqual([
+      expect.objectContaining({
+        id: "agency",
+        name: "Agency",
+        amountPaise: 0,
+        priceLabel: "Custom",
+        status: "inactive",
+        activeListingLimit: 500,
+        listingCredits: 500,
+      }),
+    ]);
+  });
+
+  it("finds an existing Custom plan without failing strict create parsing", async () => {
+    mocks.planDocGet.mockResolvedValue({
+      exists: true,
+      id: "agency",
+      data: () => ({
+        name: "Agency",
+        description: "Legacy custom plan",
+        priceLabel: "Custom",
+        activeListingLimit: 500,
+        status: "inactive",
+        sortOrder: 30,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      }),
+    });
+
+    const plan = await new BillingService().findPlan("agency");
+
+    expect(plan).toMatchObject({
+      id: "agency",
+      name: "Agency",
+      amountPaise: 0,
+      priceLabel: "Custom",
+      status: "inactive",
+      activeListingLimit: 500,
+      listingCredits: 500,
+    });
   });
 });
 

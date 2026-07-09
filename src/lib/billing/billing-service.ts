@@ -318,11 +318,19 @@ function parseLegacyAmountPaise(priceLabel: string | null, isFreePlan: boolean) 
   return amountPaise;
 }
 
+function normalizeLegacyAmountPaise(priceLabel: string | null) {
+  if (!priceLabel) return 0;
+  const numeric = priceLabel.replace(/[^0-9.]/g, "");
+  if (!numeric) return 0;
+  const rupees = Number(numeric);
+  if (!Number.isFinite(rupees) || rupees < 0) return 0;
+  const amountPaise = Math.round(rupees * 100);
+  return amountPaise >= 0 ? amountPaise : 0;
+}
+
 function normalizePlanRecord(plan: Record<string, unknown>) {
-  const isFreePlan = isFreePlanIdentifier(readString(plan.name), readString(plan.id));
   const amountPaise =
-    readAmountPaise(plan.amountPaise, isFreePlan) ??
-    parseLegacyAmountPaise(readString(plan.priceLabel), isFreePlan);
+    readNormalizedAmountPaise(plan.amountPaise) ?? normalizeLegacyAmountPaise(readString(plan.priceLabel));
   const listingCredits =
     readPositiveWholeNumber(plan.listingCredits) ?? readPositiveWholeNumber(plan.activeListingLimit) ?? 0;
   const normalized = {
@@ -345,10 +353,8 @@ function readPositiveWholeNumber(value: unknown) {
   return value;
 }
 
-function readAmountPaise(value: unknown, allowZero: boolean) {
-  if (typeof value !== "number" || !Number.isInteger(value)) return null;
-  if (value === 0 && allowZero) return value;
-  if (value < 1) return null;
+function readNormalizedAmountPaise(value: unknown) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
   return value;
 }
 
