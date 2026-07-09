@@ -37,6 +37,9 @@ export function PricingSection({
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {activePlans.map((plan) => {
             const isSelected = plan.id === selectedPlanId;
+            const planHref = isSelected
+              ? `/pricing/checkout?plan=${encodeURIComponent(plan.id)}`
+              : `/pricing?plan=${encodeURIComponent(plan.id)}`;
 
             return (
               <article
@@ -92,7 +95,7 @@ export function PricingSection({
                     plan.featured && "bg-zinc-950 hover:bg-zinc-800",
                   )}
                 >
-                  <Link href={`/pricing?plan=${encodeURIComponent(plan.id)}`}>
+                  <Link href={planHref}>
                     {isSelected ? `Continue with ${plan.name}` : `Choose ${plan.name}`}
                     <ArrowRight className="size-4" />
                   </Link>
