@@ -72,7 +72,7 @@ export default async function AdminListingsPage({
             <p className="text-sm text-cyan-200">Super Admin</p>
             <h1 className="mt-2 text-3xl font-semibold">Listings</h1>
             <p className="mt-2 max-w-3xl text-slate-400">
-              Create, inspect, edit, publish, archive, and delete listings across every broker workspace.
+              Manage every property across all broker accounts.
             </p>
           </div>
           <Button asChild className="bg-cyan-300 text-slate-950 hover:bg-cyan-200">

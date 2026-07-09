@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FirebaseError } from "firebase/app";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 import { Building2, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,15 +24,28 @@ function messageForSignInError(error: unknown) {
       return "Too many attempts. Please wait a moment and try again.";
     }
     if (error.code === "auth/network-request-failed") {
-      return "Network error while contacting Firebase Auth.";
+      return "You appear to be offline. Check your connection and try again.";
     }
   }
 
   if (error instanceof Error && error.message.includes("Firebase environment variable")) {
-    return "Firebase login is not configured for this deployment.";
+    return "Sign in is temporarily unavailable. Please try again shortly.";
   }
 
   return "Unable to sign in. Please try again.";
+}
+
+function messageForPasswordResetError(error: unknown) {
+  if (error instanceof FirebaseError) {
+    if (error.code === "auth/invalid-email") return "Enter a valid email address first.";
+    if (error.code === "auth/network-request-failed") return "You appear to be offline. Check your connection and try again.";
+  }
+
+  if (error instanceof Error && error.message.includes("Firebase environment variable")) {
+    return "Password reset is temporarily unavailable.";
+  }
+
+  return null;
 }
 
 export function LoginForm({ nextPath }: { nextPath?: string }) {
@@ -40,11 +53,14 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setResetMessage(null);
 
     startTransition(async () => {
       try {
@@ -58,6 +74,33 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
         setError(messageForSignInError(error));
       }
     });
+  }
+
+  async function onForgotPassword() {
+    const trimmedEmail = email.trim().toLowerCase();
+    setError(null);
+    setResetMessage(null);
+
+    if (!trimmedEmail) {
+      setError("Enter your email address first, then request the reset link.");
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      const { auth } = initializeFirebaseClient();
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      setResetMessage("If this email has an account, a password reset link has been sent.");
+    } catch (error) {
+      const message = messageForPasswordResetError(error);
+      if (message) {
+        setError(message);
+      } else {
+        setResetMessage("If this email has an account, a password reset link has been sent.");
+      }
+    } finally {
+      setIsResettingPassword(false);
+    }
   }
 
   return (
@@ -75,7 +118,17 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
         />
       </div>
       <div>
-        <Label htmlFor="password">Password</Label>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="password">Password</Label>
+          <button
+            type="button"
+            onClick={onForgotPassword}
+            disabled={isPending || isResettingPassword}
+            className="text-sm font-medium text-emerald-700 transition hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isResettingPassword ? "Sending..." : "Forgot password?"}
+          </button>
+        </div>
         <Input
           id="password"
           type="password"
@@ -87,13 +140,18 @@ export function LoginForm({ nextPath }: { nextPath?: string }) {
         />
       </div>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {resetMessage ? (
+        <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {resetMessage}
+        </p>
+      ) : null}
       <Button className="w-full justify-start bg-emerald-600 text-white hover:bg-emerald-700" type="submit" disabled={isPending}>
         {isPending ? <Loader2 className="size-4 animate-spin" /> : <Building2 className="size-4" />}
         Sign in
       </Button>
       <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-zinc-600">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-700" />
-        Admin and broker access is assigned from Firestore user records after Firebase Auth verifies your identity.
+        Your account opens the right workspace automatically.
       </div>
     </form>
   );

@@ -24,8 +24,7 @@ export default async function AdminPage() {
           <p className="text-sm text-cyan-200">Super Admin</p>
           <h1 className="mt-2 text-3xl font-semibold">Platform overview</h1>
           <p className="mt-2 max-w-3xl text-slate-400">
-            Platform-wide controls for workspaces, moderation, provider settings, subscriptions,
-            usage logs, and support impersonation.
+            Monitor brokers, listings, leads and plans.
           </p>
         </div>
 
@@ -33,7 +32,7 @@ export default async function AdminPage() {
           <StatCard label="Workspaces" value={workspaces.length} detail="Broker accounts" />
           <StatCard label="Listings" value={listings.length} detail="All workspace listings" />
           <StatCard label="Leads" value={leads.length} detail="Across platform" />
-          <StatCard label="AI cost" value="₹0" detail="Provider routing ready" />
+          <StatCard label="AI cost" value="₹0" detail="Current period" />
         </div>
 
         <section className="grid gap-4 lg:grid-cols-2">
@@ -41,17 +40,17 @@ export default async function AdminPage() {
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">Global AI providers</h2>
-                  <p className="mt-1 text-sm text-slate-400">Platform defaults and fallback chain.</p>
+                  <h2 className="text-xl font-semibold">AI connections</h2>
+                  <p className="mt-1 text-sm text-slate-400">Models available for listing creation.</p>
                 </div>
-                <Badge className="bg-cyan-300 text-slate-950">platform</Badge>
+                <Badge className="bg-cyan-300 text-slate-950">AI</Badge>
               </div>
               <div className="mt-5 space-y-3">
                 {listAIProviders().map((provider) => (
                   <div key={provider.id} className="flex items-center justify-between">
                     <span>{provider.label}</span>
                     <Badge variant={provider.enabled ? "default" : "secondary"}>
-                      {provider.enabled ? "enabled" : "needs key"}
+                      {provider.enabled ? "Connected" : "Not connected"}
                     </Badge>
                   </div>
                 ))}
@@ -64,9 +63,9 @@ export default async function AdminPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">Platform plans</h2>
-                  <p className="mt-1 text-sm text-slate-400">Global listing limits and billing catalog.</p>
+                  <p className="mt-1 text-sm text-slate-400">Pricing and published listing limits.</p>
                 </div>
-                <Badge className="bg-cyan-300 text-slate-950">Razorpay-ready</Badge>
+                <Badge className="bg-cyan-300 text-slate-950">{plans.length} plans</Badge>
               </div>
               <div className="mt-5 space-y-3">
                 {plans.map((plan) => (
@@ -82,14 +81,6 @@ export default async function AdminPage() {
           </Card>
         </section>
 
-        <Card className="border-cyan-300/10 bg-white/[0.06] text-white">
-          <CardContent className="grid gap-4 p-5 text-sm text-slate-300 md:grid-cols-4">
-            <p>Workspace moderation and suspension belong here.</p>
-            <p>AI and WhatsApp provider credentials belong here.</p>
-            <p>Subscription catalog and Razorpay settings belong here.</p>
-            <p>Broker workspace settings stay inside `/dashboard/settings`.</p>
-          </CardContent>
-        </Card>
       </div>
     </AdminShell>
   );

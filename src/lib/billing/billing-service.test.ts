@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calculatePlanUsage, defaultPlans } from "./billing-service";
-import type { Listing } from "@/types/domain";
+import { calculatePlanUsage, defaultPlans, selectDefaultPlanId } from "./billing-service";
+import type { Listing, Plan } from "@/types/domain";
 
 describe("calculatePlanUsage", () => {
   it("counts only published listings against the plan limit", () => {
@@ -27,6 +27,37 @@ describe("calculatePlanUsage", () => {
   });
 });
 
+describe("selectDefaultPlanId", () => {
+  it("prefers the active Free plan", () => {
+    expect(
+      selectDefaultPlanId([
+        plan("starter", "Starter", "active", 10),
+        plan("free", "Free", "active", 30),
+      ]),
+    ).toBe("free");
+  });
+
+  it("falls back to the lowest-sort active plan", () => {
+    expect(
+      selectDefaultPlanId([
+        plan("pro", "Pro", "active", 20),
+        plan("starter", "Starter", "active", 10),
+        plan("free", "Free", "inactive", 1),
+      ]),
+    ).toBe("starter");
+  });
+});
+
 function listing(status: Listing["status"]) {
   return { status } as Listing;
+}
+
+function plan(id: string, name: string, status: Plan["status"], sortOrder: number): Plan {
+  return {
+    ...defaultPlans[0],
+    id,
+    name,
+    status,
+    sortOrder,
+  };
 }

@@ -23,7 +23,7 @@ export default async function AdminPlatformSettingsPage({
             <p className="text-sm text-cyan-200">Super Admin</p>
             <h1 className="mt-2 text-3xl font-semibold">Platform settings</h1>
             <p className="mt-2 max-w-3xl text-slate-400">
-              Control the public website identity, favicon, search metadata, and social preview.
+              Manage the TRL brand, search appearance and link previews.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -61,7 +61,7 @@ export default async function AdminPlatformSettingsPage({
               </span>
               <div>
                 <h2 className="text-xl font-semibold">Website identity</h2>
-                <p className="text-sm text-slate-400">Used across the homepage, login, dashboard shell, and browser metadata.</p>
+                <p className="text-sm text-slate-400">Logo, name and support contact.</p>
               </div>
             </div>
 
@@ -120,7 +120,7 @@ export default async function AdminPlatformSettingsPage({
                 </span>
                 <div>
                   <h2 className="text-xl font-semibold">SEO defaults</h2>
-                  <p className="text-sm text-slate-400">Homepage and site fallback title, description, and share cards.</p>
+                  <p className="text-sm text-slate-400">Search title, description and share preview.</p>
                 </div>
               </div>
               <div className="mt-5 grid gap-4">
@@ -145,7 +145,7 @@ export default async function AdminPlatformSettingsPage({
 
             <div className="mt-7 flex flex-col gap-3 border-t border-cyan-300/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-400">
-                Changes publish to the website shell and search metadata after save.
+                Saved changes appear across TRL.
               </p>
               <Button type="submit" className="bg-cyan-300 text-slate-950 hover:bg-cyan-200">
                 Save platform branding
@@ -190,10 +190,10 @@ export default async function AdminPlatformSettingsPage({
             <section className="rounded-lg border border-cyan-300/10 bg-white/[0.06] p-5 text-white">
               <div className="flex items-center gap-3">
                 <Globe2 className="size-5 text-cyan-200" />
-                <h2 className="text-lg font-semibold">Scope</h2>
+                <h2 className="text-lg font-semibold">Broker branding</h2>
               </div>
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                These are platform-wide defaults. Broker catalogue branding stays inside broker workspace settings.
+                Brokers manage their own catalogue details from profile settings.
               </p>
             </section>
           </aside>

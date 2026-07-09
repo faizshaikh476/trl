@@ -32,14 +32,14 @@ export function AdminSectionPage({
 
   return (
     <AdminShell active={active}>
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         <div>
           <p className="text-sm text-cyan-200">{eyebrow}</p>
           <h1 className="mt-2 text-3xl font-semibold">{title}</h1>
           <p className="mt-2 max-w-3xl text-slate-400">{description}</p>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cards.map((card) => (
             <Card key={card.title} className="border-cyan-300/10 bg-white/[0.06] text-white">
               <CardContent className="p-5">

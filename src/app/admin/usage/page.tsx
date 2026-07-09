@@ -8,22 +8,22 @@ export default async function AdminUsagePage() {
     <AdminSectionPage
       active="Usage logs"
       title="Usage logs"
-      description="Track AI generations, WhatsApp messages, listing views, clicks, enquiries, and conversion signals."
+      description="Monitor activity across AI, WhatsApp and public listings."
       cards={[
         {
           title: "AI usage",
-          description: "Provider, model, task type, token estimate, cost estimate, and generation status.",
-          status: "next",
+          description: "Model activity and estimated cost.",
+          status: "AI",
         },
         {
           title: "WhatsApp usage",
-          description: "Inbound/outbound message counts, media downloads, intake starts, and intake completions.",
-          status: "next",
+          description: "Messages received, replies sent and listings created.",
+          status: "Messages",
         },
         {
           title: "Public funnel",
-          description: "Listing views, WhatsApp clicks, call clicks, enquiries, and share events.",
-          status: "tracking",
+          description: "Views, contact clicks, shares and enquiries.",
+          status: "Live",
         },
       ]}
       tableTitle="Recent usage"

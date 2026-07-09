@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Copy, Eye, FilePenLine, Plus, Send, XCircle } from "lucide-react";
+import { BadgeCheck, Building2, Copy, Eye, FilePenLine, Plus, Send, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -131,6 +131,25 @@ export async function ListingTable({ listings }: { listings: Listing[] }) {
                         Duplicate
                       </Button>
                     </form>
+                    {listing.status !== "sold" && listing.status !== "rented" ? (
+                      <>
+                        {listing.transactionType === "sale" ? (
+                          <form action={updateListingStatusAction.bind(null, listing.id, "sold")}>
+                            <Button size="sm" type="submit" variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                              <BadgeCheck className="size-4" />
+                              Mark sold
+                            </Button>
+                          </form>
+                        ) : (
+                          <form action={updateListingStatusAction.bind(null, listing.id, "rented")}>
+                            <Button size="sm" type="submit" variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                              <BadgeCheck className="size-4" />
+                              Mark rented
+                            </Button>
+                          </form>
+                        )}
+                      </>
+                    ) : null}
                     <form action={updateListingStatusAction.bind(null, listing.id, "archived")}>
                       <Button size="sm" type="submit" variant="ghost" className="text-stone-500 hover:bg-stone-100 hover:text-stone-950">Archive</Button>
                     </form>

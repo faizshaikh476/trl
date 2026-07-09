@@ -123,4 +123,66 @@ describe("MetaWhatsAppProvider", () => {
       }),
     );
   });
+
+  it("parses OTP delivery statuses from status-only callbacks", async () => {
+    const { parseMetaDeliveryStatuses } = await import("./meta-provider");
+
+    expect(
+      parseMetaDeliveryStatuses({
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  statuses: [
+                    { id: "wamid_otp", status: "sent", timestamp: "1783521000" },
+                    { id: "wamid_otp", status: "delivered", timestamp: "1783521002" },
+                    { id: "wamid_otp", status: "read", timestamp: "1783521005" },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      { messageId: "wamid_otp", status: "sent", occurredAt: "2026-07-08T14:30:00.000Z", error: null },
+      { messageId: "wamid_otp", status: "delivered", occurredAt: "2026-07-08T14:30:02.000Z", error: null },
+      { messageId: "wamid_otp", status: "read", occurredAt: "2026-07-08T14:30:05.000Z", error: null },
+    ]);
+  });
+
+  it("captures Meta delivery failure details without message contents", async () => {
+    const { parseMetaDeliveryStatuses } = await import("./meta-provider");
+
+    expect(
+      parseMetaDeliveryStatuses({
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  statuses: [
+                    {
+                      id: "wamid_failed",
+                      status: "failed",
+                      timestamp: "1783521000",
+                      errors: [{ code: 131026, title: "Message undeliverable" }],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        messageId: "wamid_failed",
+        status: "failed",
+        occurredAt: "2026-07-08T14:30:00.000Z",
+        error: { code: 131026, title: "Message undeliverable" },
+      },
+    ]);
+  });
 });

@@ -12,22 +12,22 @@ export default async function AdminAuditPage() {
     <AdminSectionPage
       active="Audit logs"
       title="Audit logs"
-      description="Review important platform and workspace actions including role changes, listing actions, AI generations, and support impersonation."
+      description="Review important account and listing activity."
       cards={[
         {
-          title: "Immutable records",
-          description: "Rules now prevent client updates and deletes for audit records.",
-          status: "locked",
+          title: "Protected history",
+          description: "Audit records cannot be edited or deleted.",
+          status: "Protected",
         },
         {
-          title: "Workspace actions",
-          description: "Listing publish, archive, lead assignment, and AI generation events should all emit audit rows.",
-          status: "active",
+          title: "Listing activity",
+          description: "Track publishing, archiving and ownership changes.",
+          status: "Active",
         },
         {
-          title: "Support access",
-          description: "Impersonation start/stop events need first-class audit tracking.",
-          status: "next",
+          title: "Account access",
+          description: "Review administrative access to broker accounts.",
+          status: "Secure",
         },
       ]}
       tableTitle="Recent audit records"

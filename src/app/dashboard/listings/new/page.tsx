@@ -30,11 +30,11 @@ export default async function NewListingPage() {
         <section className="rounded-[2rem] bg-white p-6 shadow-sm shadow-stone-200/70 ring-1 ring-stone-200 sm:p-8 lg:p-10">
           <p className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800">
             <Sparkles className="size-4" />
-            Manual listing studio
+            Add property
           </p>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">Create listing</h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-stone-500">
-            Add a production-ready draft with the details needed for publishing, SEO, and sharing.
+            Add the property details now. You can review everything before publishing.
           </p>
         </section>
         <ListingForm

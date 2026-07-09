@@ -3,23 +3,29 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache, type ComponentType } from "react";
 import {
+  ArrowRight,
   BadgeCheck,
   CalendarClock,
   Car,
   Check,
   Compass,
+  Eye,
   IndianRupee,
   Home,
   MapPin,
   MessageCircle,
   Phone,
-  Share2,
   Ruler,
   Store,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OwnerVerificationModal } from "@/components/public/owner-verification-modal";
 import { LeadForm } from "@/components/public/lead-form";
+import {
+  ListingViewTracker,
+  ShareListingButton,
+  TrackedListingLink,
+} from "@/components/public/listing-analytics";
 import { PropertyCarousel } from "@/components/public/property-carousel";
 import { getPublicBaseUrl, ownerClaimService, type OwnerClaimLookup } from "@/lib/claims/owner-claim-service";
 import { formatNumber, formatRupees } from "@/lib/format";
@@ -31,6 +37,7 @@ import {
   getCachedPublicListingHeroMedia,
   getCachedPublicListingMedia,
 } from "@/lib/public/public-listing-cache";
+import { workspaceService } from "@/lib/workspaces/workspace-service";
 import type { Listing } from "@/types/domain";
 
 type QuickFact = {
@@ -79,7 +86,10 @@ export default async function PublicListingPage({
   const claimLookup = query.claim ? await ownerClaimService.lookup(query.claim) : null;
   const claimMatchesListing = claimLookup?.status === "ready" && claimLookup.listing.id === listing.id;
   const showVerificationModal = Boolean(claimMatchesListing);
-  const media = await getCachedPublicListingMedia(listing.workspaceId, listing.id);
+  const [media, workspace] = await Promise.all([
+    getCachedPublicListingMedia(listing.workspaceId, listing.id),
+    workspaceService.findById(listing.workspaceId),
+  ]);
   const verifiedContactPhone =
     isBrokerVerified && (listing.ownerPhone || verifiedOwnerProfile?.phone)
       ? phoneForContact(listing.ownerPhone || verifiedOwnerProfile?.phone || "")
@@ -90,6 +100,8 @@ export default async function PublicListingPage({
   const whatsappHref = hasVerifiedContact
     ? `https://wa.me/${verifiedContactPhone}?text=${encodeURIComponent(`Hi, I am interested in ${listing.title}`)}`
     : "";
+  const publicListingUrl = `${getPublicBaseUrl()}/l/${listing.slug}`;
+  const brokerCatalogueHref = workspace ? `/b/${workspace.slug}` : "";
   const actionLabel = listing.transactionType === "rent" ? "Rent" : "Buy";
   const priceLabel =
     listing.transactionType === "rent" ? `${formatRupees(listing.price)}/mo` : formatRupees(listing.price);
@@ -151,6 +163,7 @@ export default async function PublicListingPage({
 
   return (
     <main className="min-h-screen bg-[#fbfaf7] pb-36 text-zinc-950 sm:pb-0">
+      <ListingViewTracker listingId={listing.id} />
       <header className="sticky top-0 z-30 border-b border-zinc-200/70 bg-[#fbfaf7]/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
           <Link href="/" className="text-sm font-semibold tracking-tight sm:text-base">
@@ -167,12 +180,26 @@ export default async function PublicListingPage({
                 {verifiedOwnerProfile.name}
               </span>
             ) : null}
+            {brokerCatalogueHref ? (
+              <Button asChild size="sm" variant="outline" className="hidden bg-white sm:inline-flex">
+                <Link href={brokerCatalogueHref}>
+                  <Store className="size-4" />
+                  Broker catalogue
+                </Link>
+              </Button>
+            ) : null}
+            <ShareListingButton
+              listingId={listing.id}
+              title={listing.title}
+              url={publicListingUrl}
+              className="hidden bg-white text-zinc-950 ring-1 ring-zinc-200 hover:bg-zinc-100 sm:inline-flex"
+            />
             {hasVerifiedContact ? (
               <Button asChild size="sm" className="hidden bg-emerald-600 text-white hover:bg-emerald-700 sm:inline-flex">
-                <a href={whatsappHref}>
+                <TrackedListingLink listingId={listing.id} type="whatsapp_click" href={whatsappHref}>
                   <MessageCircle className="size-4" />
                   WhatsApp
-                </a>
+                </TrackedListingLink>
               </Button>
             ) : null}
           </div>
@@ -191,37 +218,51 @@ export default async function PublicListingPage({
         freshnessStatus={listing.freshnessStatus}
       />
 
-      <section className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-10 lg:px-8">
-        <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-12">
-          <article>
+      <section className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-10 lg:px-8">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-7 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-12">
+          <article className="min-w-0">
             <div className="border-b border-zinc-200 pb-5 sm:pb-8">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-zinc-600 sm:text-sm">
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="size-4" />
-                  {listing.location}
+              <div className="flex flex-wrap items-start gap-2 text-xs font-medium text-zinc-600 sm:items-center sm:text-sm">
+                <span className="flex min-w-0 max-w-full items-start gap-1.5 break-words">
+                  <MapPin className="mt-0.5 size-4 shrink-0" />
+                  <span className="min-w-0 leading-5">{listing.location}</span>
                 </span>
                 <span className="hidden text-zinc-300 sm:inline">/</span>
-                <span>{listing.societyName}</span>
+                <span className="min-w-0 leading-5">{listing.societyName}</span>
               </div>
-              <h1 className="mt-3 max-w-4xl text-balance text-[2rem] font-semibold leading-[1.02] tracking-tight sm:mt-4 sm:text-5xl lg:text-6xl">
+              <h1 className="mt-3 max-w-4xl text-balance text-[1.9rem] font-semibold leading-[1.04] tracking-tight sm:mt-4 sm:text-5xl lg:text-6xl">
                 {listing.title}
               </h1>
-              <div className="mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-4">
-                <p className="mr-1 inline-flex items-baseline gap-1 text-3xl font-semibold tracking-tight sm:text-4xl">
+              <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-5 sm:gap-4">
+                <p className="mr-1 inline-flex items-baseline gap-1 text-2xl font-semibold tracking-tight sm:text-4xl">
                   {formatRupees(listing.price)}
                   {listing.transactionType === "rent" ? (
                     <span className="text-base font-medium text-zinc-500 sm:text-lg">/month</span>
                   ) : null}
                 </p>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 sm:px-3 sm:text-sm">
                   <Home className="size-4" />
                   {listing.transactionType === "sale" ? "For sale" : "For rent"}
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-700">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 sm:px-3 sm:text-sm">
                   <IndianRupee className="size-4" />
                   Brokerage {listing.brokerage || "on request"}
                 </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 ring-1 ring-zinc-200 sm:px-3 sm:text-sm">
+                  <Eye className="size-4" />
+                  {formatNumber(listing.views)} views
+                </span>
               </div>
+              {brokerCatalogueHref ? (
+                <Link
+                  href={brokerCatalogueHref}
+                  className="mt-4 flex min-h-11 max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white px-3.5 py-2 text-sm font-semibold text-zinc-900 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50 sm:hidden"
+                >
+                  <Store className="size-4 text-emerald-700" />
+                  <span className="min-w-0 truncate">View more from this broker</span>
+                  <ArrowRight className="size-4 shrink-0" />
+                </Link>
+              ) : null}
             </div>
 
             {quickFacts.length ? (
@@ -319,18 +360,39 @@ export default async function PublicListingPage({
                   {hasVerifiedContact ? (
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <Button asChild className="h-11 bg-emerald-600 text-white hover:bg-emerald-700">
-                        <a href={whatsappHref}>
+                        <TrackedListingLink listingId={listing.id} type="whatsapp_click" href={whatsappHref}>
                           <MessageCircle className="size-4" />
                           WhatsApp
-                        </a>
+                        </TrackedListingLink>
                       </Button>
                       <Button asChild variant="outline" className="h-11">
-                        <a href={`tel:+${verifiedContactPhone}`}>
+                        <TrackedListingLink listingId={listing.id} type="call_click" href={`tel:+${verifiedContactPhone}`}>
                           <Phone className="size-4" />
                           Call
-                        </a>
+                        </TrackedListingLink>
                       </Button>
                     </div>
+                  ) : null}
+                  {brokerCatalogueHref ? (
+                    <Link
+                      href={brokerCatalogueHref}
+                      className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-[#fbfaf7] p-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-emerald-700 shadow-sm ring-1 ring-zinc-200">
+                          <Store className="size-5" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-zinc-950">
+                            Broker catalogue
+                          </span>
+                          <span className="block truncate text-xs text-zinc-500">
+                            More active properties from {brokerName}
+                          </span>
+                        </span>
+                      </span>
+                      <ArrowRight className="size-4 shrink-0 text-zinc-500" />
+                    </Link>
                   ) : null}
                 </div>
               ) : (
@@ -381,34 +443,36 @@ export default async function PublicListingPage({
         </div>
       </section>
       {isBrokerVerified && hasVerifiedContact ? (
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-[#fbfaf7]/95 px-3 py-3 shadow-[0_-12px_40px_rgba(24,24,27,0.12)] backdrop-blur sm:hidden">
-        <div className="grid gap-2">
-          <div className="min-w-0">
-            <p className="flex max-w-full items-center gap-1.5 text-base font-semibold leading-tight">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-[#fbfaf7]/96 px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-10px_30px_rgba(24,24,27,0.12)] backdrop-blur sm:hidden">
+        <div className="mx-auto grid w-full max-w-lg gap-2">
+          <div className="flex min-w-0 items-center justify-between gap-3 px-1">
+            <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold leading-tight">
               <IndianRupee className="size-4 shrink-0 text-emerald-700" />
-              <span className="min-w-0 break-words">
+              <span className="truncate">
                 {actionLabel} · {priceLabel}
               </span>
             </p>
-            <p className="truncate text-xs text-zinc-500">{mobileContext}</p>
+            <p className="min-w-0 truncate text-right text-xs text-zinc-500">{mobileContext}</p>
           </div>
-          <div className="grid grid-cols-[minmax(0,1fr)_44px_44px] gap-2">
-            <Button asChild className="h-11 min-w-0 bg-emerald-600 px-4 text-white hover:bg-emerald-700">
-              <a href={whatsappHref}>
-                <MessageCircle className="size-4" />
+          <div className="grid grid-cols-[minmax(0,1fr)_52px_52px] gap-2">
+            <Button asChild className="h-[52px] min-w-0 rounded-xl bg-emerald-600 px-4 text-base text-white hover:bg-emerald-700">
+              <TrackedListingLink listingId={listing.id} type="whatsapp_click" href={whatsappHref}>
+                <MessageCircle className="size-5" />
                 WhatsApp
-              </a>
+              </TrackedListingLink>
             </Button>
-            <Button asChild variant="outline" size="icon" className="h-11 w-11 bg-white">
-              <a href={`tel:+${verifiedContactPhone}`} aria-label="Call broker">
-                <Phone className="size-4" />
-              </a>
+            <Button asChild variant="outline" size="icon" className="size-[52px] rounded-xl bg-white">
+              <TrackedListingLink listingId={listing.id} type="call_click" href={`tel:+${verifiedContactPhone}`} ariaLabel="Call broker">
+                <Phone className="size-5" />
+              </TrackedListingLink>
             </Button>
-            <Button asChild className="h-11 w-11 bg-zinc-950 text-white hover:bg-zinc-800">
-              <a href="#enquire" aria-label="Open enquiry form">
-                <Share2 className="size-4" />
-              </a>
-            </Button>
+            <ShareListingButton
+              listingId={listing.id}
+              title={listing.title}
+              url={publicListingUrl}
+              iconOnly
+              className="size-[52px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800"
+            />
           </div>
         </div>
       </div>
@@ -455,14 +519,13 @@ function UnverifiedListingGate({
               Broker verification
             </p>
             <h1 className="mt-5 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-              Verify this listing before it goes public.
+              Verify your profile to publish this listing.
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-zinc-600 sm:text-lg">
-              This link is ready, but the property details stay private until the WhatsApp sender
-              verifies their broker profile with a one-time OTP.
+              Confirm the WhatsApp number that sent this property. You only need to do this once.
             </p>
             <div className="mt-7 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-              <p className="text-sm font-medium text-zinc-500">Listing waiting for verification</p>
+              <p className="text-sm font-medium text-zinc-500">Property</p>
               <p className="mt-2 text-xl font-semibold leading-snug">{listing.title}</p>
               <p className="mt-2 text-sm text-zinc-500">{listing.location || listing.city}</p>
             </div>
@@ -474,18 +537,15 @@ function UnverifiedListingGate({
             </div>
             <h2 className="mt-5 text-2xl font-semibold">One quick step</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              Add your name, occupation, email, and password. We send the OTP only to the
-              original WhatsApp number that created this listing.
+              Add your details and enter the OTP sent to your WhatsApp number.
             </p>
             {verificationLookup ? (
               <p className="mt-5 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-                The verification form is open. Complete it once and future listings from this
-                WhatsApp number will publish under the same broker account.
+                Complete verification to publish this property and open your broker workspace.
               </p>
             ) : (
               <p className="mt-5 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                Verification is being prepared. Send DONE again on WhatsApp if this listing was
-                created before the claim step finished.
+                Open the latest link from your WhatsApp chat to continue.
               </p>
             )}
           </div>

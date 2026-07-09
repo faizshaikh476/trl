@@ -164,10 +164,10 @@ function messageForAuthError(error: unknown) {
       return "This email already exists. Please use the correct password for that account.";
     }
     if (error.code === "auth/weak-password") return "Password must be at least 6 characters.";
-    if (error.code === "auth/network-request-failed") return "Network error while contacting Firebase Auth.";
+    if (error.code === "auth/network-request-failed") return "You appear to be offline. Check your connection and try again.";
   }
   if (error instanceof Error && error.message.includes("Firebase environment variable")) {
-    return "Firebase login is not configured for this deployment.";
+    return "Verification is temporarily unavailable. Please try again shortly.";
   }
   return "Unable to verify right now. Please try again.";
 }
@@ -250,7 +250,7 @@ function ModalFooter({ isPending, label }: { isPending: boolean; label: string }
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 sm:justify-start">
           <BadgeCheck className="size-4 text-emerald-700" />
-          Verified once for future listings
+          One verification for all listings
         </div>
         <Button type="submit" className="h-11 w-full bg-zinc-950 text-white hover:bg-zinc-800 sm:w-auto" disabled={isPending}>
           {isPending ? <Loader2 className="size-4 animate-spin" /> : null}

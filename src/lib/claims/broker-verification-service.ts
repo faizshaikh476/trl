@@ -9,6 +9,13 @@ import { ownerClaimService, type OwnerClaimLookup } from "@/lib/claims/owner-cla
 import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
 import type { OwnerClaimToken } from "@/types/domain";
 import type { WhatsAppProvider } from "@/lib/whatsapp/whatsapp-provider";
+import {
+  acceptedOtpAudit,
+  failedOtpAttemptAudit,
+  requestedOtpAudit,
+  verifiedOtpAudit,
+} from "@/lib/claims/otp-audit";
+import type { WhatsAppDeliveryStatus } from "@/lib/whatsapp/providers/meta-provider";
 
 export type BrokerVerificationStartResult =
   | { ok: true; message: string }
@@ -21,7 +28,10 @@ export type BrokerVerificationCompleteResult =
 export class BrokerVerificationService {
   constructor(
     private readonly deps: {
-      sendOtp?: (phone: string, otp: string) => Promise<void>;
+      sendOtp?: (
+        phone: string,
+        otp: string,
+      ) => Promise<{ id: string; status: "sent" | "mocked" }>;
     } = {},
   ) {}
 
@@ -64,12 +74,35 @@ export class BrokerVerificationService {
             acceptedAt: now,
           },
         },
+        otpAudit: requestedOtpAudit(now),
         updatedAt: now,
       },
       { merge: true },
     );
 
-    await this.sendOtp(lookup.token.phone, otp);
+    try {
+      const delivery = await this.sendOtp(lookup.token.phone, otp);
+      await getAdminDb().doc(firestorePaths.ownerClaimToken(token)).update({
+        "otpAudit.providerMessageId": delivery.id,
+        "otpAudit.sendStatus": acceptedOtpAudit(delivery.id, delivery.status, now).sendStatus,
+        "otpAudit.providerAcceptedAt": now,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      await getAdminDb().doc(firestorePaths.ownerClaimToken(token)).update({
+        otpHash: FieldValue.delete(),
+        otpExpiresAt: FieldValue.delete(),
+        pendingBroker: FieldValue.delete(),
+        "otpAudit.sendStatus": "failed",
+        "otpAudit.deliveryStatus": "failed",
+        "otpAudit.deliveryFailedAt": new Date().toISOString(),
+        "otpAudit.deliveryError": {
+          title: error instanceof Error ? error.message.slice(0, 160) : "WhatsApp OTP send failed",
+        },
+        updatedAt: new Date().toISOString(),
+      });
+      return { ok: false, message: "WhatsApp could not deliver the OTP. Please try again." };
+    }
     return { ok: true, message: "OTP sent on WhatsApp." };
   }
 
@@ -104,6 +137,12 @@ export class BrokerVerificationService {
       return { ok: false, message: "OTP expired. Please request a new one." };
     }
     if (hashOtp(otp) !== tokenData.otpHash) {
+      const failed = failedOtpAttemptAudit(new Date().toISOString());
+      await tokenDoc.ref.update({
+        "otpAudit.failedVerificationAttempts": FieldValue.increment(1),
+        "otpAudit.lastFailedVerificationAt": failed.lastFailedVerificationAt,
+        updatedAt: new Date().toISOString(),
+      });
       return { ok: false, message: "Invalid OTP." };
     }
 
@@ -117,6 +156,7 @@ export class BrokerVerificationService {
     if (verifiedToken.email.toLowerCase() !== broker.email.toLowerCase()) {
       return { ok: false, message: "Please sign in with the same email used for verification." };
     }
+    const verifiedAudit = verifiedOtpAudit(verifiedToken.uid, new Date().toISOString());
 
     await this.upsertBrokerUserRecord({
       uid: verifiedToken.uid,
@@ -136,21 +176,45 @@ export class BrokerVerificationService {
       email: broker.email,
       consent: broker.consent,
     }));
-    await getAdminDb().doc(firestorePaths.ownerClaimToken(token)).set(
-      {
-        otpHash: FieldValue.delete(),
-        otpExpiresAt: FieldValue.delete(),
-        pendingBroker: FieldValue.delete(),
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true },
-    );
+    await getAdminDb().doc(firestorePaths.ownerClaimToken(token)).update({
+      otpHash: FieldValue.delete(),
+      otpExpiresAt: FieldValue.delete(),
+      pendingBroker: FieldValue.delete(),
+      "otpAudit.verifiedAt": verifiedAudit.verifiedAt,
+      "otpAudit.verifiedByUid": verifiedAudit.verifiedByUid,
+      updatedAt: new Date().toISOString(),
+    });
     revalidatePublicListing(lookup.listing);
 
     return {
       ok: true,
       redirectTo: `/l/${lookup.listing.slug}?verified=1`,
     };
+  }
+
+  async recordDeliveryStatuses(statuses: WhatsAppDeliveryStatus[]) {
+    for (const status of statuses) {
+      const snapshot = await getAdminDb()
+        .collection("ownerClaimTokens")
+        .where("otpAudit.providerMessageId", "==", status.messageId)
+        .limit(1)
+        .get();
+      const tokenDoc = snapshot.docs[0];
+      if (!tokenDoc) continue;
+
+      const timestampField = {
+        sent: "otpAudit.sentAt",
+        delivered: "otpAudit.deliveredAt",
+        read: "otpAudit.readAt",
+        failed: "otpAudit.deliveryFailedAt",
+      }[status.status];
+      await tokenDoc.ref.update({
+        "otpAudit.deliveryStatus": status.status,
+        [timestampField]: status.occurredAt,
+        ...(status.error ? { "otpAudit.deliveryError": status.error } : {}),
+        updatedAt: new Date().toISOString(),
+      });
+    }
   }
 
   private async upsertBrokerUserRecord({
@@ -220,7 +284,7 @@ export class BrokerVerificationService {
     if (this.deps.sendOtp) return this.deps.sendOtp(phone, otp);
     const { createWhatsAppProvider } = await import("@/lib/whatsapp/providers/provider-factory");
     const provider: WhatsAppProvider = createWhatsAppProvider();
-    await provider.sendTextMessage(phone, `Your therealestatelink verification OTP is ${otp}. It expires in 10 minutes.`);
+    return provider.sendTextMessage(phone, `Your therealestatelink verification OTP is ${otp}. It expires in 10 minutes.`);
   }
 }
 

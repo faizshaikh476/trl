@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createWhatsAppProvider } from "@/lib/whatsapp/providers/provider-factory";
 import { whatsappService, type WhatsAppWebhookResult } from "@/lib/whatsapp/whatsapp-service";
 import type { WhatsAppProvider } from "@/lib/whatsapp/whatsapp-provider";
+import { brokerVerificationService } from "@/lib/claims/broker-verification-service";
+import { parseMetaDeliveryStatuses } from "@/lib/whatsapp/providers/meta-provider";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -26,6 +28,10 @@ export async function POST(request: Request) {
     const provider = createWhatsAppProvider();
     const payload = await request.json();
     console.info("WhatsApp webhook received", summarizeWebhookPayload(payload));
+    const deliveryStatuses = parseMetaDeliveryStatuses(payload);
+    if (deliveryStatuses.length) {
+      await brokerVerificationService.recordDeliveryStatuses(deliveryStatuses);
+    }
     const results = await whatsappService.handleWebhookBatch(payload, provider);
     const result = results.find((item) => item.status !== "ignored") ?? results[0] ?? { status: "ignored", reply: "" };
     console.info("WhatsApp webhook processed", {

@@ -14,11 +14,10 @@ export default async function LoginPage({
       <div className="absolute inset-x-0 bottom-0 h-40 bg-amber-100/70" />
       <Card className="relative w-full max-w-lg border-emerald-100 bg-white text-zinc-950 shadow-xl shadow-emerald-900/5">
         <CardContent className="p-6">
-          <p className="text-sm font-semibold text-emerald-700">Secure workspace access</p>
-          <h1 className="mt-3 text-3xl font-semibold">Sign in</h1>
+          <p className="text-sm font-semibold text-emerald-700">Welcome back</p>
+          <h1 className="mt-3 text-3xl font-semibold">Sign in to TRL</h1>
           <p className="mt-3 text-sm leading-6 text-zinc-600">
-            Use your Firebase Auth account to enter the Firestore-backed broker and platform consoles.
-            Workspace and admin permissions are checked on the server for every protected route.
+            Manage your listings, leads and property catalogue.
           </p>
           <LoginForm nextPath={next} />
           <div className="mt-6 flex flex-wrap gap-x-4 gap-y-2 border-t border-zinc-200 pt-4 text-xs text-zinc-500">

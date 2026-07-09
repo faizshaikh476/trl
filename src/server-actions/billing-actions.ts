@@ -44,6 +44,7 @@ function revalidateAdminBilling() {
   revalidatePath("/admin");
   revalidatePath("/admin/subscriptions");
   revalidatePath("/admin/workspaces");
+  revalidatePath("/admin/users");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
 }

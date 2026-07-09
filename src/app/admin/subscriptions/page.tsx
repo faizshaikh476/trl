@@ -25,33 +25,27 @@ export default async function AdminSubscriptionsPage() {
       description="Build plans and control how many live property pages each broker workspace can publish."
       cards={[
         {
-          title: "Only one enforced limit",
-          description: "V1 plans limit published listings only. Drafts, archives, sold, and rented listings stay available.",
-          status: "live",
+          title: "Listing allowance",
+          description: "Only published listings count towards a plan limit.",
+          status: "Published",
         },
         {
           title: "Active plans",
           description: `${activePlans} plan${activePlans === 1 ? "" : "s"} available for workspace assignment.`,
-          status: "catalog",
+          status: "Available",
         },
         {
-          title: "Payments later",
-          description: "Razorpay can be connected after the plan catalog and usage enforcement are stable.",
-          status: "next",
+          title: "Billing",
+          description: "Set the price shown for each plan.",
+          status: "Pricing",
         },
       ]}
     >
-      <section className="grid gap-4 xl:grid-cols-[1fr_26rem]">
-        <div className="space-y-4">
-          {plans.map((plan) => (
-            <PlanEditor key={plan.id} plan={plan} isAssigned={assignedPlanIds.has(plan.id)} />
-          ))}
-        </div>
-
-        <aside className="space-y-4">
-          <form action={createPlanAction} className="rounded-lg border border-cyan-300/10 bg-white/[0.06] p-5 text-white">
+      <section className="min-w-0 space-y-4 overflow-hidden">
+        <form action={createPlanAction} className="rounded-lg border border-cyan-300/10 bg-white/[0.06] p-5 text-white">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-lg bg-cyan-300 text-slate-950">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-cyan-300 text-slate-950">
                 <Plus className="size-5" />
               </span>
               <div>
@@ -59,28 +53,35 @@ export default async function AdminSubscriptionsPage() {
                 <p className="text-sm text-slate-400">Add a plan with a live listing limit.</p>
               </div>
             </div>
-            <div className="mt-5 grid gap-3">
-              <Field label="Plan name" name="name" placeholder="Growth" required />
-              <Field label="Price label" name="priceLabel" placeholder="₹7,999/mo" required />
-              <Field label="Published listing limit" name="activeListingLimit" type="number" min="1" defaultValue="50" required />
-              <Field label="Sort order" name="sortOrder" type="number" defaultValue="40" required />
-              <input type="hidden" name="status" value="active" />
-              <Button type="submit" className="bg-cyan-300 text-slate-950 hover:bg-cyan-200">
-                Create plan
-              </Button>
-            </div>
-          </form>
-
-          <div className="rounded-lg border border-cyan-300/10 bg-white/[0.06] p-5 text-white">
-            <div className="flex items-center gap-3">
-              <CreditCard className="size-5 text-cyan-200" />
-              <h2 className="text-lg font-semibold">Upgrade behaviour</h2>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              When a broker reaches their live listing limit, WhatsApp and dashboard publishing both ask them to archive an older listing or upgrade.
-            </p>
+            <Button type="submit" className="w-full bg-cyan-300 text-slate-950 hover:bg-cyan-200 sm:w-auto">
+              Create plan
+            </Button>
           </div>
-        </aside>
+
+          <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Field label="Plan name" name="name" placeholder="Growth" required />
+            <Field label="Price label" name="priceLabel" placeholder="₹7,999/mo" required />
+            <Field label="Published listing limit" name="activeListingLimit" type="number" min="1" defaultValue="50" required />
+            <Field label="Sort order" name="sortOrder" type="number" defaultValue="40" required />
+            <input type="hidden" name="status" value="active" />
+          </div>
+        </form>
+
+        <div className="min-w-0 space-y-4">
+          {plans.map((plan) => (
+            <PlanEditor key={plan.id} plan={plan} isAssigned={assignedPlanIds.has(plan.id)} />
+          ))}
+        </div>
+
+        <div className="rounded-lg border border-cyan-300/10 bg-white/[0.06] p-5 text-white">
+          <div className="flex items-center gap-3">
+            <CreditCard className="size-5 text-cyan-200" />
+            <h2 className="text-lg font-semibold">Upgrade behaviour</h2>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            When a broker reaches their live listing limit, WhatsApp and dashboard publishing both ask them to archive an older listing or upgrade.
+          </p>
+        </div>
       </section>
     </AdminSectionPage>
   );
@@ -110,19 +111,19 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
         <p className="text-xs text-slate-500">ID: {plan.id}</p>
       </div>
 
-      <form action={updatePlanAction.bind(null, plan.id)} className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_12rem_9rem_10rem_auto]">
+      <form action={updatePlanAction.bind(null, plan.id)} className="mt-5 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field label="Name" name="name" defaultValue={plan.name} required />
         <Field label="Price" name="priceLabel" defaultValue={plan.priceLabel} required />
         <Field label="Live limit" name="activeListingLimit" type="number" min="1" defaultValue={String(plan.activeListingLimit)} required />
         <Field label="Sort" name="sortOrder" type="number" defaultValue={String(plan.sortOrder)} required />
-        <label className="grid gap-1 text-sm font-medium text-slate-300">
+        <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-300">
           Status
-          <select name="status" defaultValue={plan.status} className="h-10 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white">
+          <select name="status" defaultValue={plan.status} className="h-10 min-w-0 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white">
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
         </label>
-        <div className="flex items-end">
+        <div className="flex min-w-0 items-end md:col-span-2 xl:col-span-1">
           <Button type="submit" className="w-full bg-cyan-300 text-slate-950 hover:bg-cyan-200">
             Save
           </Button>
@@ -156,11 +157,11 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
 function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   const { label, ...inputProps } = props;
   return (
-    <label className="grid gap-1 text-sm font-medium text-slate-300">
+    <label className="grid min-w-0 gap-1 text-sm font-medium text-slate-300">
       {label}
       <input
         {...inputProps}
-        className="h-10 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none placeholder:text-slate-600"
+        className="h-10 min-w-0 rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-white outline-none placeholder:text-slate-600"
       />
     </label>
   );

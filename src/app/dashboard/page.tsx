@@ -2,7 +2,7 @@ import { AppShell } from "@/components/dashboard/app-shell";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ListingTable } from "@/components/listings/listing-table";
 import { notFound } from "next/navigation";
-import { Activity, ArrowUpRight, Building2, Inbox, Sparkles } from "lucide-react";
+import { Activity, ArrowUpRight, Building2, Inbox, MessageCircle, Share2, Sparkles } from "lucide-react";
 import { analyticsService } from "@/lib/analytics/analytics-service";
 import { auditLogService } from "@/lib/audit/audit-log-service";
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -33,10 +33,10 @@ export default async function DashboardPage() {
                 {workspace.name}
               </p>
               <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-                Broker workspace
+                Your business at a glance
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-stone-500">
-                Manage published pages, buyer enquiries, and listing freshness from one calm operating desk.
+                Track listings, enquiries and buyer activity.
               </p>
             </div>
             <div className="border-t border-stone-100 bg-stone-50 p-6 lg:border-l lg:border-t-0">
@@ -45,21 +45,29 @@ export default async function DashboardPage() {
                 <FocusRow icon={Building2} label={`${listings.filter((item) => item.status === "published").length} live listings`} />
                 <FocusRow icon={Inbox} label={`${leads.length} buyer enquiries`} />
                 <FocusRow icon={Activity} label={`${formatNumber(totals.views)} listing views`} />
+                <FocusRow icon={MessageCircle} label={`${formatNumber(totals.whatsappClicks)} WhatsApp taps`} />
               </div>
             </div>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <StatCard tone="light" label="Active listings" value={listings.filter((item) => item.status === "published").length} detail="Published and visible" />
           <StatCard tone="light" label="Drafts" value={listings.filter((item) => item.status !== "published").length} detail="Need review or publishing" />
-          <StatCard tone="light" label="Leads" value={leads.length} detail="Captured in CRM" />
-          <StatCard tone="light" label="Listing views" value={formatNumber(totals.views)} detail="Tracked public traffic" />
+          <StatCard tone="light" label="Leads" value={leads.length} detail="Buyer enquiries" />
+          <StatCard tone="light" label="Listing views" value={formatNumber(totals.views)} detail="Total property views" />
+          <StatCard tone="light" label="WhatsApp taps" value={formatNumber(totals.whatsappClicks)} detail="WhatsApp enquiries" />
+          <StatCard tone="light" label="Share + calls" value={formatNumber(totals.shares + totals.callClicks)} detail={`${formatNumber(totals.shares)} shares · ${formatNumber(totals.callClicks)} calls`} />
         </div>
+        <section className="grid gap-4 lg:grid-cols-3">
+          <EngagementCard icon={Activity} label="Enquiry rate" value={`${totals.conversionRate}%`} detail="Enquiries from property views." />
+          <EngagementCard icon={MessageCircle} label="WhatsApp enquiries" value={formatNumber(totals.whatsappClicks)} detail="Buyers who opened WhatsApp." />
+          <EngagementCard icon={Share2} label="Shares" value={formatNumber(totals.shares)} detail="Property links shared." />
+        </section>
         <section>
           <div className="mb-4 flex items-end justify-between">
             <div>
               <h2 className="text-xl font-semibold text-stone-950">Listings</h2>
-              <p className="text-sm text-stone-500">Quality score, lead count, and public preview.</p>
+              <p className="text-sm text-stone-500">Review performance and manage your properties.</p>
             </div>
           </div>
           <ListingTable listings={listings} />
@@ -87,6 +95,31 @@ function FocusRow({ icon: Icon, label }: { icon: typeof ArrowUpRight; label: str
         <Icon className="size-4" />
       </span>
       <span>{label}</span>
+    </div>
+  );
+}
+
+function EngagementCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: typeof ArrowUpRight;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-[1.5rem] border border-stone-200 bg-white p-5 shadow-sm shadow-stone-200/60">
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
+          <Icon className="size-5" />
+        </span>
+        <p className="text-sm font-medium text-stone-500">{label}</p>
+      </div>
+      <p className="mt-4 text-3xl font-semibold tracking-tight text-stone-950">{value}</p>
+      <p className="mt-2 text-sm leading-6 text-stone-500">{detail}</p>
     </div>
   );
 }

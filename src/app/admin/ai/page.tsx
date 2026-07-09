@@ -9,29 +9,29 @@ export default async function AdminAIPage() {
     <AdminSectionPage
       active="AI settings"
       title="AI settings"
-      description="Configure platform AI defaults, fallback providers, model routing, task policy, and cost controls."
+      description="Manage the AI models used to create and improve listings."
       cards={[
         {
-          title: "Provider routing",
-          description: "OpenAI, Gemini, and Anthropic provider routing can be enabled as credentials are added.",
-          status: "ready",
+          title: "Connections",
+          description: "See which AI services are available.",
+          status: "Status",
         },
         {
-          title: "Task model policy",
-          description: "Extraction, copy, risk detection, marketing assets, and image classification should have independent models.",
-          status: "next",
+          title: "Listing creation",
+          description: "Property details are turned into structured, shareable listings.",
+          status: "AI",
         },
         {
-          title: "Cost and audit logs",
-          description: "Every generation should persist provider, model, estimate, status, and error state.",
-          status: "next",
+          title: "Usage",
+          description: "Review model activity and estimated cost.",
+          status: "Monitor",
         },
       ]}
       tableTitle="Providers"
       tableRows={listAIProviders().map((provider) => ({
         provider: provider.label,
-        enabled: provider.enabled ? "yes" : "needs key",
-        local_only: provider.localOnly ? "yes" : "no",
+        status: provider.enabled ? "Connected" : "Not connected",
+        access: provider.localOnly ? "Internal" : "Live",
       }))}
     />
   );

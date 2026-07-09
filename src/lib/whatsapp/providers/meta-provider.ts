@@ -14,9 +14,22 @@ type MetaWebhookPayload = {
           video?: { id: string; caption?: string; mime_type?: string };
           document?: { id: string; caption?: string; filename?: string; mime_type?: string };
         }>;
+        statuses?: Array<{
+          id?: string;
+          status?: string;
+          timestamp?: string;
+          errors?: Array<{ code?: number; title?: string }>;
+        }>;
       };
     }>;
   }>;
+};
+
+export type WhatsAppDeliveryStatus = {
+  messageId: string;
+  status: "sent" | "delivered" | "read" | "failed";
+  occurredAt: string;
+  error: { code?: number; title?: string } | null;
 };
 
 type MetaSendResponse = {
@@ -159,6 +172,35 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 
     return { id: response.messages?.[0]?.id ?? `wameta_buttons_${Date.now()}`, status: "sent" as const };
   }
+}
+
+export function parseMetaDeliveryStatuses(payload: unknown): WhatsAppDeliveryStatus[] {
+  const value = payload as MetaWebhookPayload;
+  return (value.entry ?? [])
+    .flatMap((entry) => entry.changes ?? [])
+    .flatMap((change) => change.value?.statuses ?? [])
+    .filter(
+      (status): status is Required<Pick<typeof status, "id" | "status" | "timestamp">> & typeof status =>
+        Boolean(
+          status.id &&
+          status.timestamp &&
+          (status.status === "sent" ||
+            status.status === "delivered" ||
+            status.status === "read" ||
+            status.status === "failed"),
+        ),
+    )
+    .map((status) => ({
+      messageId: status.id,
+      status: status.status as WhatsAppDeliveryStatus["status"],
+      occurredAt: new Date(Number(status.timestamp) * 1000).toISOString(),
+      error: status.errors?.[0]
+        ? {
+            ...(typeof status.errors[0].code === "number" ? { code: status.errors[0].code } : {}),
+            ...(status.errors[0].title ? { title: status.errors[0].title } : {}),
+          }
+        : null,
+    }));
 }
 
 function emptyMessage(): ParsedWhatsAppMessage {

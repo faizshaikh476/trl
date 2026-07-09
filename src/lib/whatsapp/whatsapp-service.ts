@@ -1,11 +1,13 @@
 import { aiListingService } from "@/lib/ai/ai-service";
-import { billingService, ListingPlanLimitError } from "@/lib/billing/billing-service";
+import { billingService, ListingPlanLimitError, type PlanUsage } from "@/lib/billing/billing-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
+import { formatRupees } from "@/lib/format";
 import { ownerClaimService } from "@/lib/claims/owner-claim-service";
 import { listingService } from "@/lib/listings/listing-service";
 import { getPublicBaseUrl } from "@/lib/claims/owner-claim-service";
 import { ownerProfileIdForPhone, ownerProfileService } from "@/lib/owners/owner-profile-service";
+import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
 import type { MediaAsset } from "@/types/domain";
 import {
   firestoreWhatsAppBrokerWorkspaceService,
@@ -27,6 +29,10 @@ const MIXED_MEDIA_REPLY =
 const UNSUPPORTED_MEDIA_REPLY =
   "📸 Please send property photos as images only. Videos, PDFs, and documents are not processed right now.\n\nYou can also send the property details as text, then type DONE.";
 const EMPTY_DONE_REPLY = "📌 Please share the property details, location, price, and photos first. Type DONE when you’re finished.";
+const INSUFFICIENT_DETAILS_REPLY =
+  "📌 I need a little more property details before I can make the page.\n\nPlease send property type/BHK, location, rent/sale, price or rent, and any photos. Then type DONE.";
+const INAPPROPRIATE_CONTENT_REPLY =
+  "⚠️ Please send property details only, using clean language.\n\nI can create listing pages for real-estate properties. Send the corrected details and type DONE.";
 const PROCESSING_REPLY = "⏳ Got it! Give me ~30 seconds to grab all your photos and build the page...";
 const FAILED_REPLY =
   "⚠️ I couldn’t create the property page from this message. Please try again with the property details, price, location, and photos.";
@@ -48,6 +54,7 @@ interface WhatsAppServiceDependencies {
   billingService: typeof billingService;
   saveMediaAssets: typeof saveIncomingMediaAssets;
   brokerWorkspaceService: WhatsAppBrokerWorkspaceService;
+  revalidateListing: typeof revalidatePublicListing;
 }
 
 export interface WhatsAppProcessedMessageStore {
@@ -77,6 +84,7 @@ export class WhatsAppService {
       billingService: dependencies.billingService ?? billingService,
       saveMediaAssets: dependencies.saveMediaAssets ?? saveIncomingMediaAssets,
       brokerWorkspaceService: dependencies.brokerWorkspaceService ?? firestoreWhatsAppBrokerWorkspaceService,
+      revalidateListing: dependencies.revalidateListing ?? revalidatePublicListing,
     };
   }
 
@@ -128,6 +136,18 @@ export class WhatsAppService {
         return { status: "collecting", to: message.from, reply: EMPTY_DONE_REPLY };
       }
 
+      const intakeGate = validateIntakeContent(session.messages.join("\n\n"), onlyImageMedia(session.media).length);
+      if (!intakeGate.ok) {
+        if (intakeGate.reason === "intake_rejected") {
+          await this.dependencies.sessionStore.markCancelled(message.workspaceId, message.from);
+        }
+        return {
+          status: intakeGate.reason,
+          to: message.from,
+          reply: intakeGate.reason === "intake_rejected" ? INAPPROPRIATE_CONTENT_REPLY : INSUFFICIENT_DETAILS_REPLY,
+        };
+      }
+
       try {
         await this.dependencies.billingService.assertCanPublish(message.workspaceId);
       } catch (error) {
@@ -152,6 +172,13 @@ export class WhatsAppService {
     if (isGreeting(text) && !message.media.length) {
       const session = await this.dependencies.sessionStore.getActiveSession(message.workspaceId, message.from);
       if (session && (session.messages.length || session.media.length || session.status === "processing")) {
+        const intakeGate = validateIntakeContent(session.messages.join("\n\n"), onlyImageMedia(session.media).length);
+        if (session.status !== "processing" && !intakeGate.ok && intakeGate.reason === "intake_rejected") {
+          await this.dependencies.sessionStore.markCancelled(message.workspaceId, message.from);
+          await this.dependencies.sessionStore.startSession(message.workspaceId, message.from);
+          const brokerName = await this.verifiedBrokerName(message.workspaceId, message.from);
+          return { status: "collecting", to: message.from, reply: brokerName ? welcomeBackReply(brokerName) : START_REPLY };
+        }
         return { status: "collecting_silent", to: message.from, reply: "" };
       }
       if (!session) await this.dependencies.sessionStore.startSession(message.workspaceId, message.from);
@@ -199,7 +226,7 @@ export class WhatsAppService {
       if (!session || (!session.messages.length && !session.media.length)) {
         return { status: "draft_failed", to: message.from, reply: EMPTY_DONE_REPLY };
       }
-      await this.dependencies.billingService.assertCanPublish(message.workspaceId);
+      const usageBeforePublish = await this.dependencies.billingService.assertCanPublish(message.workspaceId);
       const sessionText = session.messages.join("\n\n");
       const sessionMedia = onlyImageMedia(session.media);
       const resolvedMedia = await resolveIncomingMedia(provider, {
@@ -237,16 +264,27 @@ export class WhatsAppService {
           phone: ownerProfile.phone,
         });
       }
+      try {
+        this.dependencies.revalidateListing(listing);
+      } catch (error) {
+        console.error("Unable to revalidate WhatsApp-created listing", {
+          listingId: listing.id,
+          message: error instanceof Error ? error.message : "unknown error",
+        });
+      }
       await this.dependencies.sessionStore.markCompleted(message.workspaceId, message.from, listing.id);
       const publicListingUrl = `${getPublicBaseUrl()}/l/${listing.slug}`;
       const dashboardUrl = `${getPublicBaseUrl()}/dashboard`;
       const heroMedia = media.find((asset) => asset.isHero) ?? media[0] ?? null;
       const outboundMessages = buildReadyOutboundMessages({
         listingTitle: listing.title,
+        transactionType: listing.transactionType,
+        price: listing.price,
         listingUrl: publicListingUrl,
         dashboardUrl,
         heroImageUrl: heroMedia?.type === "image" ? heroMedia.url : null,
         shouldVerifyBroker,
+        planUsage: usageAfterPublish(usageBeforePublish, listing),
       });
 
       return {
@@ -392,6 +430,17 @@ function planLimitReply(planName: string, activeListings: number, limit: number)
   return `🚦 You’ve reached your ${planName} plan limit.\n\nYou have ${activeListings}/${limit} live listings.\n\nPlease archive an older property from your dashboard or upgrade your plan to publish more.`;
 }
 
+function usageAfterPublish(usage: PlanUsage, listing: { status?: string }) {
+  if (listing.status && listing.status !== "published") return usage;
+  const activeListings = Math.min(usage.limit, usage.activeListings + 1);
+  return {
+    ...usage,
+    activeListings,
+    remaining: Math.max(0, usage.limit - activeListings),
+    isAtLimit: activeListings >= usage.limit,
+  };
+}
+
 function safeMessageId(messageId: string) {
   return messageId.replace(/\//g, "_");
 }
@@ -404,20 +453,69 @@ function isCancel(text: string) {
   return /^cancel[\s.!]*$/i.test(text.trim());
 }
 
+type IntakeGateResult =
+  | { ok: true }
+  | { ok: false; reason: "insufficient_property_details" | "intake_rejected" };
+
+const blockedLanguagePattern =
+  /\b(?:idiots?|stupid|fuck(?:ing)?|shit|bitch|bastard|chutiya|madarchod|bhenchod|randi|harami|sex|porn|escort|drug|cocaine|weed|ganja)\b/i;
+const commonJunkPattern = /^(?:test|testing|asdf|qwerty|ok|okay|hello|hi|hii|done|random|sample)[\s.!😂🤣👍🙏-]*$/i;
+const repeatedCharacterPattern = /(.)\1{6,}/;
+const propertySignalPatterns = [
+  /\b(?:bhk|rk|bed(?:room)?s?|bath(?:room)?s?|flat|apartment|office|shop|showroom|villa|bungalow|plot|land|commercial|residential|studio|penthouse|duplex|row house)\b/i,
+  /\b(?:rent|rental|lease|leased|pre-leased|sale|sell|resale|buy)\b/i,
+  /\b(?:price|rent|deposit|brokerage|maintenance|rs\.?|inr|₹|lakh|lac|cr|crore|thousand|k)\b/i,
+  /\b(?:sq\.?\s*ft|sqft|square feet|carpet|built[-\s]?up|area|floor|parking|balcony|garden|terrace|furnished|semi furnished|unfurnished|lift|amenities?)\b/i,
+  /\b(?:location|locality|society|near|road|lane|wakad|pune|mumbai|baner|hinjewadi|kharadi|hadapsar|nibm|wanowrie|salunkhe|vihar|koregaon|kondhwa)\b/i,
+  /\b\d+\s*(?:bhk|rk|sqft|sq\.?\s*ft|lakh|lac|cr|crore|k)\b/i,
+  /(?:₹|rs\.?|inr)\s*\d+/i,
+];
+
+function validateIntakeContent(text: string, imageCount: number): IntakeGateResult {
+  const normalizedText = text.trim();
+  const readableWords = normalizedText.match(/[a-z0-9₹]+/gi) ?? [];
+
+  if (blockedLanguagePattern.test(normalizedText)) return { ok: false, reason: "intake_rejected" };
+  if (!normalizedText && imageCount > 0) return { ok: false, reason: "insufficient_property_details" };
+  if (!normalizedText) return { ok: false, reason: "insufficient_property_details" };
+  if (commonJunkPattern.test(normalizedText)) return { ok: false, reason: "insufficient_property_details" };
+  if (repeatedCharacterPattern.test(normalizedText)) return { ok: false, reason: "insufficient_property_details" };
+
+  const alphaNumericCount = (normalizedText.match(/[a-z0-9]/gi) ?? []).length;
+  const symbolCount = (normalizedText.match(/[^\s\p{L}\p{N}]/gu) ?? []).length;
+  if (readableWords.length < 4 || (symbolCount > alphaNumericCount && readableWords.length < 8)) {
+    return { ok: false, reason: "insufficient_property_details" };
+  }
+
+  const propertySignals = propertySignalPatterns.filter((pattern) => pattern.test(normalizedText)).length;
+  if (propertySignals < 2) return { ok: false, reason: "insufficient_property_details" };
+
+  return { ok: true };
+}
+
 function buildReadyOutboundMessages({
   listingTitle,
+  transactionType,
+  price,
   listingUrl,
   dashboardUrl,
   heroImageUrl,
   shouldVerifyBroker,
+  planUsage,
 }: {
   listingTitle: string;
+  transactionType: "sale" | "rent";
+  price: number;
   listingUrl: string;
   dashboardUrl: string;
   heroImageUrl: string | null;
   shouldVerifyBroker: boolean;
+  planUsage?: PlanUsage;
 }): WhatsAppOutboundMessage[] {
-  const propertyCaption = `${listingTitle}\n\n👉 View all pics & details here:\n${listingUrl}`;
+  const dealLabel = transactionType === "rent" ? "For rent" : "For sale";
+  const priceLabel = price > 0 ? formatRupees(price) : "Price on request";
+  const priceLine = transactionType === "rent" && price > 0 ? `${priceLabel}/month · ${dealLabel}` : `${priceLabel} · ${dealLabel}`;
+  const propertyCaption = `🏠 ${listingTitle}\n💰 ${priceLine}\n\n👉 View all pics & details here:\n${listingUrl}`;
   const messages: WhatsAppOutboundMessage[] = [
     {
       type: "text",
@@ -436,8 +534,14 @@ function buildReadyOutboundMessages({
       : {
           type: "text",
           text: propertyCaption,
-        },
+    },
   ];
+  if (planUsage && planUsage.limit > 0) {
+    messages.push({
+      type: "text",
+      text: listingUsageReply(planUsage.plan.name, planUsage.remaining, planUsage.limit),
+    });
+  }
   if (shouldVerifyBroker) {
     messages.push({
       type: "text",
@@ -446,4 +550,13 @@ function buildReadyOutboundMessages({
     });
   }
   return messages;
+}
+
+function listingUsageReply(planName: string, remaining: number, limit: number) {
+  const slotLabel = remaining === 1 ? "slot" : "slots";
+  const planLabel = planName ? `${planName} plan` : "current plan";
+  if (remaining <= 0) {
+    return `📦 This listing is live. Your ${planLabel} is now full.\n\nTo publish more, upgrade your plan or archive an older live listing.`;
+  }
+  return `📦 This listing is live. You have ${remaining}/${limit} live listing ${slotLabel} left on your ${planLabel}.\n\nNeed more room? Upgrade anytime from your dashboard.`;
 }

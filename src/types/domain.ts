@@ -156,6 +156,25 @@ export interface OwnerClaimToken {
   status: "pending" | "claimed" | "expired";
   expiresAt: TimestampString;
   claimedAt: TimestampString | null;
+  otpAudit?: {
+    requestedAt: TimestampString;
+    sendStatus: "pending" | "accepted" | "failed";
+    providerMessageId?: string;
+    providerAcceptedAt?: TimestampString;
+    deliveryStatus?: "sent" | "delivered" | "read" | "failed";
+    sentAt?: TimestampString;
+    deliveredAt?: TimestampString;
+    readAt?: TimestampString;
+    deliveryFailedAt?: TimestampString;
+    deliveryError?: {
+      code?: number;
+      title?: string;
+    } | null;
+    failedVerificationAttempts: number;
+    lastFailedVerificationAt?: TimestampString;
+    verifiedAt?: TimestampString;
+    verifiedByUid?: string;
+  };
   createdAt: TimestampString;
   updatedAt: TimestampString;
 }

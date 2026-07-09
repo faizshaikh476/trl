@@ -51,6 +51,8 @@ const listing = {
   workspaceId: "workspace_broker_917276709161",
   title: extraction.title,
   slug: "commercial-office-for-sale-listing-123",
+  transactionType: extraction.transactionType,
+  price: extraction.price,
   qualityScore: 82,
 } as Listing;
 
@@ -145,7 +147,7 @@ describe("WhatsAppService intake cues", () => {
     const followUp = await done.followUp?.();
 
     expect(followUp?.status).toBe("draft_ready");
-    expect(followUp?.outboundMessages).toEqual([
+    expect(followUp?.outboundMessages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: "text",
         text: expect.stringContaining("Your private listing link is ready"),
@@ -163,7 +165,9 @@ describe("WhatsAppService intake cues", () => {
         type: "text",
         text: expect.stringContaining("Quick one-time step"),
       }),
-    ]);
+    ]));
+    expect(followUp?.reply).toContain("₹75 L");
+    expect(followUp?.reply).toContain("For sale");
     expect(followUp?.reply).not.toContain("?claim=");
     expect(ai.extractListing).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -211,6 +215,7 @@ describe("WhatsAppService intake cues", () => {
       createListingClaim: vi.fn(),
       markListingClaimedForVerifiedProfile: vi.fn().mockResolvedValue(undefined),
     };
+    const revalidateListing = vi.fn();
     const service = new WhatsAppService({
       sessionStore: store,
       brokerWorkspaceService: createBrokerWorkspaceService(),
@@ -220,6 +225,7 @@ describe("WhatsAppService intake cues", () => {
       ownerClaimService: claims,
       billingService: createUnlimitedBillingService(),
       saveMediaAssets: vi.fn().mockResolvedValue([]),
+      revalidateListing,
     });
     const provider = new MockWhatsAppProvider();
 
@@ -241,7 +247,67 @@ describe("WhatsAppService intake cues", () => {
       ownerProfileId: "owner_917276709161",
       phone: "917276709161",
     });
+    expect(revalidateListing).toHaveBeenCalledWith(listing);
     expect(followUp?.reply).not.toContain("Quick one-time step");
+  });
+
+  it("includes remaining plan slots when a WhatsApp listing goes live", async () => {
+    const store = createMemorySessionStore();
+    const ai = {
+      extractListing: vi.fn().mockResolvedValue({
+        data: extraction,
+        provider: "deepseek",
+        model: "deepseek-chat",
+        confidenceScore: 0.84,
+        costEstimate: 0.01,
+      }),
+    };
+    const listings = { createFromExtraction: vi.fn().mockResolvedValue(listing) };
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      aiListingService: ai,
+      listingService: listings,
+      ownerProfileService: {
+        findById: vi.fn().mockResolvedValue(null),
+        upsertFromWhatsApp: vi.fn().mockResolvedValue({
+          id: "owner_917276709161",
+          phone: "917276709161",
+          status: "verified",
+        }),
+      },
+      ownerClaimService: {
+        createListingClaim: vi.fn(),
+        markListingClaimedForVerifiedProfile: vi.fn().mockResolvedValue(undefined),
+      },
+      billingService: {
+        assertCanPublish: vi.fn().mockResolvedValue({
+          plan: { ...defaultPlans[0], name: "Starter", activeListingLimit: 10 },
+          activeListings: 1,
+          limit: 10,
+          remaining: 9,
+          isAtLimit: false,
+        }),
+      },
+      saveMediaAssets: vi.fn().mockResolvedValue([]),
+    });
+    const provider = new MockWhatsAppProvider();
+
+    await service.handleWebhook(
+      {
+        text: "2 BHK for rent in Wakad, 29000 rent",
+        from: "917276709161",
+      },
+      provider,
+    );
+    const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
+    const followUp = await done.followUp?.();
+
+    expect(followUp?.status).toBe("draft_ready");
+    expect(followUp?.reply).toContain("8/10 live listing slots left");
+    expect(followUp?.reply).toContain("Starter");
+    expect(followUp?.reply).toContain("Upgrade");
   });
 
   it("collects a photo batch with caption even when the broker did not say hi first", async () => {
@@ -353,6 +419,64 @@ describe("WhatsAppService intake cues", () => {
 
     expect(result.status).toBe("collecting");
     expect(result.reply).toContain("share the property details");
+  });
+
+  it("does not run AI when DONE arrives after gibberish content", async () => {
+    const store = createMemorySessionStore();
+    const ai = { extractListing: vi.fn() };
+    const listings = { createFromExtraction: vi.fn() };
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      aiListingService: ai,
+      listingService: listings,
+      billingService: createUnlimitedBillingService(),
+    });
+    const provider = new MockWhatsAppProvider();
+
+    await service.handleWebhook({ text: "asdf qwer zzzz 😂😂", from: "917276709161" }, provider);
+    const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
+    const session = await store.getActiveSession("workspace_broker_917276709161", "917276709161");
+
+    expect(done.status).toBe("insufficient_property_details");
+    expect(done.reply).toContain("property details");
+    expect(done.reply).toContain("rent/sale");
+    expect(done.followUp).toBeUndefined();
+    expect(ai.extractListing).not.toHaveBeenCalled();
+    expect(listings.createFromExtraction).not.toHaveBeenCalled();
+    expect(session?.status).toBe("collecting");
+  });
+
+  it("does not run AI when abusive or inappropriate text is sent as listing content", async () => {
+    const store = createMemorySessionStore();
+    const ai = { extractListing: vi.fn() };
+    const listings = { createFromExtraction: vi.fn() };
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      aiListingService: ai,
+      listingService: listings,
+      billingService: createUnlimitedBillingService(),
+    });
+    const provider = new MockWhatsAppProvider();
+
+    await service.handleWebhook(
+      {
+        text: "2 BHK flat for rent in Wakad. This is for stupid idiots only.",
+        from: "917276709161",
+      },
+      provider,
+    );
+    const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
+
+    expect(done.status).toBe("intake_rejected");
+    expect(done.reply).toContain("property details only");
+    expect(done.reply).toContain("clean language");
+    expect(done.followUp).toBeUndefined();
+    expect(ai.extractListing).not.toHaveBeenCalled();
+    expect(listings.createFromExtraction).not.toHaveBeenCalled();
   });
 
   it("asks the broker to upgrade when the workspace has reached its live listing limit", async () => {
@@ -597,6 +721,42 @@ describe("WhatsAppService intake cues", () => {
 
     expect(result.reply).not.toContain("Unverified Name");
     expect(result.reply).toContain("Send me the property details");
+  });
+
+  it("lets a broker recover with Hi after a rejected intake", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      billingService: createUnlimitedBillingService(),
+    });
+    const provider = new MockWhatsAppProvider();
+
+    await service.handleWebhook(
+      {
+        text: "2 BHK flat for rent in Wakad for stupid idiots",
+        from: "918265048678",
+      },
+      provider,
+    );
+    const rejected = await service.handleWebhook({ text: "Done", from: "918265048678" }, provider);
+    const restart = await service.handleWebhook({ text: "Hi", from: "918265048678" }, provider);
+    const imageOnlyDone = await service.handleWebhook(
+      {
+        text: "Done",
+        from: "918265048678",
+      },
+      provider,
+    );
+
+    expect(rejected.status).toBe("intake_rejected");
+    expect(rejected.reply).toContain("clean language");
+    expect(restart.status).toBe("collecting");
+    expect(restart.reply).toContain("Send me the property details");
+    expect(imageOnlyDone.status).toBe("collecting");
+    expect(imageOnlyDone.reply).toContain("Please share the property details");
+    expect(imageOnlyDone.reply).not.toContain("clean language");
   });
 });
 

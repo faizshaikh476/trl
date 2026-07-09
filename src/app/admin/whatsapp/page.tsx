@@ -26,23 +26,23 @@ export default async function AdminWhatsAppPage() {
   return (
     <AdminSectionPage
       active="WhatsApp"
-      title="WhatsApp providers"
-      description="Manage WhatsApp provider routing, webhook verification, message usage, and workspace phone mappings."
+      title="WhatsApp"
+      description="Monitor the connection, incoming messages and broker routing."
       cards={[
         {
-          title: "Provider abstraction",
-          description: "Admin intake and Meta Cloud API share one service contract.",
-          status: "ready",
+          title: "Connection",
+          description: "Check the active WhatsApp Business connection.",
+          status: "Live",
         },
         {
-          title: "Webhook endpoint",
-          description: "Meta verification and incoming message POSTs are live at the production callback URL.",
-          status: "ready",
+          title: "Incoming messages",
+          description: "Receive property details, images and commands.",
+          status: "Connected",
         },
         {
-          title: "Workspace mapping",
-          description: "Incoming WhatsApp senders auto-resolve to their own broker workspace.",
-          status: "ready",
+          title: "Broker routing",
+          description: "Keep each phone number in its own broker account.",
+          status: "Automatic",
         },
       ]}
       tableTitle="Provider endpoints"

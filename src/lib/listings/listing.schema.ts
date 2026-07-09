@@ -71,6 +71,28 @@ function compactPlaceParts(parts: Array<string | null | undefined>) {
     });
 }
 
+const mobileNumberWithOptionalCountryCodePattern =
+  /(^|[^\d])((?:\+?91[\s.-]*)?(?:0[\s.-]*)?[6-9](?:[\s.-]*\d){9})(?!\d)/g;
+const labelledMobileNumberPattern =
+  /\b(?:call|contact|mobile|phone|whatsapp|wa|number|no\.?)\s*:?\s*(?:\+?91[\s.-]*)?(?:0[\s.-]*)?[6-9](?:[\s.-]*\d){9}(?!\d)/gi;
+const emptyContactLabelPattern =
+  /\b(?:call|contact|mobile|phone|whatsapp|wa|number|no\.?)\s*:?\s*(?=\.|,|$)/gi;
+
+export function sanitizeListingPublicText(value: string) {
+  return value
+    .replace(labelledMobileNumberPattern, "")
+    .replace(mobileNumberWithOptionalCountryCodePattern, "$1")
+    .replace(emptyContactLabelPattern, "")
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+}
+
+function sanitizeListingPublicTextList(items: string[]) {
+  return items.map((item) => sanitizeListingPublicText(item)).filter(Boolean);
+}
+
 export function isGenericListingTitle(title: string) {
   const normalized = title.trim();
   return genericTitlePatterns.some((pattern) => pattern.test(normalized));
@@ -99,10 +121,53 @@ export function buildListingTitleFromExtraction(extraction: ListingExtraction) {
 }
 
 export function normalizeListingExtractionTitle(extraction: ListingExtraction) {
-  if (!isGenericListingTitle(extraction.title)) return extraction;
+  const titledExtraction = isGenericListingTitle(extraction.title)
+    ? {
+        ...extraction,
+        title: buildListingTitleFromExtraction(extraction),
+      }
+    : extraction;
+
   return {
-    ...extraction,
-    title: buildListingTitleFromExtraction(extraction),
+    ...titledExtraction,
+    title: sanitizeListingPublicText(titledExtraction.title),
+    descriptionShort: sanitizeListingPublicText(titledExtraction.descriptionShort),
+    descriptionLong: sanitizeListingPublicText(titledExtraction.descriptionLong),
+    seoTitle: sanitizeListingPublicText(titledExtraction.seoTitle),
+    seoDescription: sanitizeListingPublicText(titledExtraction.seoDescription),
+    whatsappShareText: sanitizeListingPublicText(titledExtraction.whatsappShareText),
+    instagramCaption: sanitizeListingPublicText(titledExtraction.instagramCaption),
+    highlights: sanitizeListingPublicTextList(titledExtraction.highlights),
+    amenities: sanitizeListingPublicTextList(titledExtraction.amenities),
+    riskFlags: sanitizeListingPublicTextList(titledExtraction.riskFlags),
+    confirmationQuestions: sanitizeListingPublicTextList(titledExtraction.confirmationQuestions),
+  };
+}
+
+export function normalizeManualListingInput<
+  T extends {
+    title: string;
+    descriptionShort: string;
+    descriptionLong: string;
+    seoTitle: string;
+    seoDescription: string;
+    whatsappShareText: string;
+    instagramCaption: string;
+    highlightsText: string[];
+    amenitiesText: string[];
+  },
+>(input: T): T {
+  return {
+    ...input,
+    title: sanitizeListingPublicText(input.title),
+    descriptionShort: sanitizeListingPublicText(input.descriptionShort),
+    descriptionLong: sanitizeListingPublicText(input.descriptionLong),
+    seoTitle: sanitizeListingPublicText(input.seoTitle),
+    seoDescription: sanitizeListingPublicText(input.seoDescription),
+    whatsappShareText: sanitizeListingPublicText(input.whatsappShareText),
+    instagramCaption: sanitizeListingPublicText(input.instagramCaption),
+    highlightsText: sanitizeListingPublicTextList(input.highlightsText),
+    amenitiesText: sanitizeListingPublicTextList(input.amenitiesText),
   };
 }
 
@@ -153,7 +218,7 @@ export const manualListingSchema = z.object({
   seoDescription: z.string().trim().default(""),
   whatsappShareText: z.string().trim().default(""),
   instagramCaption: z.string().trim().default(""),
-});
+}).transform(normalizeManualListingInput);
 
 export type ManualListingInput = z.infer<typeof manualListingSchema>;
 

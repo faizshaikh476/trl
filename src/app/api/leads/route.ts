@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { analyticsService } from "@/lib/analytics/analytics-service";
 import { leadService } from "@/lib/leads/lead-service";
 import { publicLeadSchema } from "@/lib/leads/lead.schema";
 import { listingService } from "@/lib/listings/listing-service";
@@ -19,6 +20,11 @@ export async function POST(request: Request) {
   const lead = await leadService.create({
     ...parsed.data,
     workspaceId: listing.workspaceId,
+  });
+  await analyticsService.recordListingEvent({
+    workspaceId: listing.workspaceId,
+    listingId: listing.id,
+    type: "enquiry_submit",
   });
   return NextResponse.json({ lead }, { status: 201 });
 }

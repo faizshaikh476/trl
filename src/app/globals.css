@@ -143,11 +143,11 @@
   }
 
   .trl-carousel-placeholder-height {
-    min-height: 34vh;
+    min-height: 32vh;
   }
 
   .trl-carousel-height {
-    height: 38vh;
+    height: 34vh;
   }
 
   .trl-modal-max-height {
@@ -166,11 +166,11 @@
     }
 
     .trl-carousel-placeholder-height {
-      min-height: 34svh;
+      min-height: 32svh;
     }
 
     .trl-carousel-height {
-      height: 38svh;
+      height: 34svh;
     }
 
     .trl-modal-max-height {

@@ -50,6 +50,10 @@ export class BillingService {
     return (await this.listPlans()).filter((plan) => plan.status === "active");
   }
 
+  async defaultPlanId() {
+    return selectDefaultPlanId(await this.listPlans());
+  }
+
   async findPlan(planId: string) {
     const doc = await getAdminDb().doc(firestorePaths.plan(planId)).get();
     if (doc.exists) return { id: doc.id, ...doc.data() } as Plan;
@@ -113,6 +117,13 @@ export class BillingService {
       message: "Razorpay checkout can be enabled by adding live keys.",
     };
   }
+}
+
+export function selectDefaultPlanId(plans: Plan[]) {
+  const activePlans = plans
+    .filter((plan) => plan.status === "active")
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  return activePlans.find((plan) => plan.id === "free")?.id ?? activePlans[0]?.id ?? "free";
 }
 
 export function calculatePlanUsage(plan: Plan, listings: Listing[]): PlanUsage {

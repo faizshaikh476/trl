@@ -9,34 +9,24 @@ import { updateWorkspaceProfileAction } from "@/server-actions/workspace-actions
 
 const workspaceSettings = [
   {
-    title: "Broker profile",
-    description: "Company name, logo, city, support contact, public broker page.",
-    status: "ready",
+    title: "Public profile",
+    description: "Your name, company, city and contact details.",
+    status: "Active",
   },
   {
-    title: "Team & roles",
-    description: "Broker owner, manager, listing executive, sales executive, uploader, viewer.",
-    status: "next",
+    title: "WhatsApp",
+    description: "The number connected to your listings and enquiries.",
+    status: "Connected",
   },
   {
-    title: "Branding",
-    description: "Website theme, accent color, logo, WhatsApp CTA copy, lead routing.",
-    status: "next",
+    title: "Catalogue",
+    description: "Your public profile and all published properties.",
+    status: "Public",
   },
   {
-    title: "Workspace WhatsApp",
-    description: "Broker phone mapping, intake greeting, freshness reminders, command behavior.",
-    status: "local parser",
-  },
-  {
-    title: "Subscription",
-    description: "Current plan, listing limits, billing contact, invoice history.",
-    status: "pro",
-  },
-  {
-    title: "Public website",
-    description: "Broker slug, custom domain readiness, published listing visibility.",
-    status: "ready",
+    title: "Plan",
+    description: "Your current listing allowance.",
+    status: "Current",
   },
 ];
 
@@ -56,23 +46,21 @@ export default async function SettingsPage() {
       <div className="space-y-6 pb-10">
         <section className="rounded-[2rem] bg-white p-6 shadow-sm shadow-stone-200/70 ring-1 ring-stone-200 sm:p-8">
           <p className="text-sm font-medium text-emerald-700">{workspace.name}</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">Workspace settings</h1>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-stone-950">Profile settings</h1>
           <p className="mt-3 max-w-2xl text-stone-500">
-            Broker-owned controls for this workspace. Platform-wide AI providers, moderation, and
-            global plans live in the separate Super Admin console.
+            Keep your public profile and catalogue details up to date.
           </p>
         </section>
 
         <section className="rounded-[1.5rem] border border-stone-200 bg-white p-5 shadow-sm shadow-stone-200/60 sm:p-6">
           <div className="flex flex-col justify-between gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-start">
             <div>
-              <p className="text-sm font-medium text-emerald-700">Editable profile</p>
+              <p className="text-sm font-medium text-emerald-700">Public profile</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-stone-950">
                 Public broker details
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-500">
-                These details appear on your broker catalogue and verified listing contact card.
-                The WhatsApp number is locked because it controls login, OTP, and listing ownership.
+                These details appear on your catalogue and property pages.
               </p>
             </div>
             <Badge variant="secondary">Phone locked</Badge>
@@ -142,14 +130,13 @@ export default async function SettingsPage() {
                 {workspace.contactPhone}
               </p>
               <p className="mt-1 text-sm leading-6 text-stone-500">
-                This number is tied to WhatsApp intake, OTP verification, and listing ownership.
-                It cannot be edited from profile settings.
+                This verified number receives listing and enquiry updates. Contact support to change it.
               </p>
             </div>
 
             <div className="flex flex-col gap-3 border-t border-stone-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-stone-500">
-                Changes update your catalogue and future verified listing contact details.
+                Changes appear across your catalogue and property pages.
               </p>
               <Button type="submit" className="bg-stone-950 text-white hover:bg-stone-800">
                 Save profile
@@ -173,7 +160,7 @@ export default async function SettingsPage() {
         <section className="rounded-[1.5rem] border border-stone-200 bg-white shadow-sm shadow-stone-200/60">
           <div className="grid gap-5 p-5 md:grid-cols-3">
             <div>
-              <p className="text-sm text-stone-500">Broker slug</p>
+              <p className="text-sm text-stone-500">Catalogue address</p>
               <p className="mt-1 font-medium text-stone-950">/{workspace.slug}</p>
             </div>
             <div>

@@ -33,7 +33,7 @@ const adminNav = [
 export async function AdminShell({ children, active }: { children: React.ReactNode; active?: string }) {
   const branding = await getPlatformBranding();
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
+    <div className="min-h-screen overflow-x-hidden bg-slate-950 text-slate-50">
       <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-cyan-300/10 bg-slate-950 px-4 py-5 lg:block">
         <div className="flex h-full flex-col">
           <Link href="/admin" className="flex items-center gap-3 px-2">
@@ -83,8 +83,8 @@ export async function AdminShell({ children, active }: { children: React.ReactNo
         </Link>
         <SignOutForm compact />
       </header>
-      <main className="lg:pl-72">
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+      <main className="min-w-0 lg:pl-72">
+        <div className="mx-auto min-w-0 w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </main>
     </div>
   );

@@ -45,6 +45,16 @@ class InMemoryWorkspaceRepository implements WorkspaceRepository {
     };
     return this.current;
   }
+
+  async updatePlan(id: string, planId: string) {
+    if (id !== this.current.id) throw new Error("Workspace not found");
+    this.current = {
+      ...this.current,
+      planId,
+      updatedAt: "2026-06-28T00:00:00.000Z",
+    };
+    return this.current;
+  }
 }
 
 describe("WorkspaceService", () => {
@@ -77,6 +87,16 @@ describe("WorkspaceService", () => {
       contactEmail: "updated@example.com",
       websiteTheme: "minimal",
       contactPhone: "9822052388",
+    });
+  });
+
+  it("assigns a new plan to a workspace", async () => {
+    const service = new WorkspaceService(new InMemoryWorkspaceRepository());
+
+    await expect(service.updatePlan("workspace_firestore", "agency")).resolves.toMatchObject({
+      id: "workspace_firestore",
+      planId: "agency",
+      updatedAt: "2026-06-28T00:00:00.000Z",
     });
   });
 });
