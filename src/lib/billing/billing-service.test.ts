@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => {
   const planDocGet = vi.fn();
   const planDocSet = vi.fn();
   const planDocDelete = vi.fn();
+  const creditGetBalance = vi.fn();
+  const creditAssertCanReactivate = vi.fn();
   const planDocRef = {
     get: planDocGet,
     set: planDocSet,
@@ -24,7 +26,28 @@ const mocks = vi.hoisted(() => {
     planDocSet,
     planDocDelete,
     planDocRef,
+    creditGetBalance,
+    creditAssertCanReactivate,
     getAdminDb,
+  };
+});
+
+vi.mock("@/lib/billing/credit-wallet-service", () => {
+  class NoListingCreditsError extends Error {
+    readonly code = "NO_LISTING_CREDITS";
+
+    constructor() {
+      super("This workspace has no active listing credits.");
+      this.name = "NoListingCreditsError";
+    }
+  }
+
+  return {
+    NoListingCreditsError,
+    creditWalletService: {
+      getBalance: mocks.creditGetBalance,
+      assertCanReactivate: mocks.creditAssertCanReactivate,
+    },
   };
 });
 
@@ -53,12 +76,15 @@ import {
   parsePlanInput,
   selectDefaultPlanId,
 } from "./billing-service";
+import { NoListingCreditsError } from "./credit-wallet-service";
 
 beforeEach(() => {
   mocks.collectionGet.mockReset();
   mocks.planDocGet.mockReset();
   mocks.planDocSet.mockReset();
   mocks.planDocDelete.mockReset();
+  mocks.creditGetBalance.mockReset();
+  mocks.creditAssertCanReactivate.mockReset();
   mocks.getAdminDb.mockClear();
 });
 
@@ -327,6 +353,49 @@ describe("BillingService.upsertPlan", () => {
       }),
       { merge: true },
     );
+  });
+});
+
+describe("BillingService.assertCanPublish", () => {
+  it("rejects a new publication when the workspace has no listing credits", async () => {
+    const { workspaceService } = await import("@/lib/workspaces/workspace-service");
+    const { listingService } = await import("@/lib/listings/listing-service");
+    vi.mocked(workspaceService.findById).mockResolvedValue({
+      id: "workspace_1",
+      name: "Rare Address",
+      slug: "rare-address",
+      city: "Pune",
+      ownerId: "owner_1",
+      logoURL: "",
+      contactName: "Owner",
+      contactPhone: "9999999999",
+      contactEmail: "owner@example.com",
+      websiteTheme: "premium",
+      customDomain: null,
+      planId: "starter",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    vi.mocked(listingService.listByWorkspace).mockResolvedValue([]);
+    mocks.planDocGet.mockResolvedValue({ exists: false });
+    mocks.creditAssertCanReactivate.mockResolvedValue({
+      availableCredits: 0,
+      validUntil: "2026-08-08T00:00:00.000Z",
+      lastPurchaseId: "purchase_1",
+      createdAt: "2026-07-09T00:00:00.000Z",
+      updatedAt: "2026-07-09T00:00:00.000Z",
+    });
+
+    await expect(
+      new BillingService().assertCanPublish("workspace_1", {
+        id: "listing_new",
+        workspaceId: "workspace_1",
+        status: "draft",
+      } as Listing),
+    ).rejects.toBeInstanceOf(NoListingCreditsError);
+
+    expect(mocks.creditAssertCanReactivate).toHaveBeenCalledWith("workspace_1");
   });
 });
 

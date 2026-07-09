@@ -6,7 +6,7 @@ import {
   type ListingExtraction,
   type ManualListingInput,
 } from "../listing.schema";
-import type { ListingRepository } from "./listing-repository";
+import type { ListingRepository, PublicationOptions } from "./listing-repository";
 
 const listings = [...demoListings];
 
@@ -44,12 +44,18 @@ export class DemoListingRepository implements ListingRepository {
     return listings.find((listing) => listing.workspaceId === workspaceId && listing.id === id) ?? null;
   }
 
-  async createFromExtraction(workspaceId: string, extraction: ListingExtraction) {
+  async createFromExtraction(
+    workspaceId: string,
+    extraction: ListingExtraction,
+    publication?: PublicationOptions,
+  ) {
     const now = new Date().toISOString();
     const normalizedExtraction = normalizeListingExtractionTitle(extraction);
-    const expiresAt = addDaysIso(normalizedExtraction.transactionType === "rent" ? 30 : 60);
+    const id = `listing_${Date.now()}`;
+    const credit = await publication?.consumeCredit?.(id);
+    const expiresAt = addDaysIso(publication?.visibilityDays ?? 60);
     const listing: Listing = {
-      id: `listing_${Date.now()}`,
+      id,
       workspaceId,
       title: normalizedExtraction.title,
       slug: `${slugify(normalizedExtraction.title)}-${Date.now()}`,
@@ -95,6 +101,8 @@ export class DemoListingRepository implements ListingRepository {
       createdBy: "mock_whatsapp",
       publishedAt: now,
       expiresAt,
+      creditConsumedAt: credit?.createdAt ?? null,
+      creditLedgerEntryId: credit?.ledgerEntryId ?? null,
       lastConfirmedAt: null,
       freshnessStatus: "Updated today",
       seoTitle: normalizedExtraction.seoTitle,
@@ -189,27 +197,37 @@ export class DemoListingRepository implements ListingRepository {
     return this.updateManual(listing.id, input);
   }
 
-  async updateStatus(id: string, status: ListingStatus) {
+  async updateStatus(id: string, status: ListingStatus, publication?: PublicationOptions) {
     const listing = listings.find((item) => item.id === id);
     if (!listing) throw new Error("Listing not found");
     const now = new Date().toISOString();
     listing.status = status;
     listing.updatedAt = now;
     if (status === "published") {
+      const credit = await publication?.consumeCredit?.(listing.id);
       listing.publishedAt = listing.publishedAt ?? now;
-      listing.expiresAt = listing.transactionType === "rent" ? addDaysIso(30) : addDaysIso(60);
+      listing.expiresAt = addDaysIso(publication?.visibilityDays ?? 60);
       listing.freshnessStatus = "Updated today";
+      if (credit) {
+        listing.creditConsumedAt = credit.createdAt;
+        listing.creditLedgerEntryId = credit.ledgerEntryId;
+      }
     }
-    if (status === "sold" || status === "rented" || status === "archived") {
+    if (status === "sold" || status === "rented" || status === "archived" || status === "unpublished") {
       listing.expiresAt = null;
     }
     return listing;
   }
 
-  async updateStatusInWorkspace(workspaceId: string, id: string, status: ListingStatus) {
+  async updateStatusInWorkspace(
+    workspaceId: string,
+    id: string,
+    status: ListingStatus,
+    publication?: PublicationOptions,
+  ) {
     const listing = await this.findByWorkspaceId(workspaceId, id);
     if (!listing) throw new Error("Listing not found");
-    return this.updateStatus(listing.id, status);
+    return this.updateStatus(listing.id, status, publication);
   }
 
   async deleteInWorkspace(workspaceId: string, id: string) {
@@ -235,6 +253,8 @@ export class DemoListingRepository implements ListingRepository {
       createdBy,
       publishedAt: null,
       expiresAt: null,
+      creditConsumedAt: null,
+      creditLedgerEntryId: null,
       lastConfirmedAt: null,
       freshnessStatus: "Draft",
       createdAt: now,

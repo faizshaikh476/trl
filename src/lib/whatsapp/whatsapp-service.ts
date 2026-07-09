@@ -1,5 +1,6 @@
 import { aiListingService } from "@/lib/ai/ai-service";
-import { billingService, ListingPlanLimitError, type PlanUsage } from "@/lib/billing/billing-service";
+import { billingService } from "@/lib/billing/billing-service";
+import { NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { formatRupees } from "@/lib/format";
@@ -36,8 +37,8 @@ const INAPPROPRIATE_CONTENT_REPLY =
 const PROCESSING_REPLY = "⏳ Got it! Give me ~30 seconds to grab all your photos and build the page...";
 const FAILED_REPLY =
   "⚠️ I couldn’t create the property page from this message. Please try again with the property details, price, location, and photos.";
-const PLAN_LIMIT_FALLBACK_REPLY =
-  "🚦 You’ve reached your live listing limit.\n\nPlease archive an older property or upgrade your plan before publishing another listing.";
+const NO_LISTING_CREDITS_REPLY =
+  "🚦 This workspace has no active listing credits.\n\nYour property details are still saved here. Buy a listing credit package, then type DONE again to publish.";
 const FINAL_SESSION_SETTLE_MS = 2500;
 
 export type WhatsAppOutboundMessage =
@@ -47,11 +48,14 @@ export type WhatsAppOutboundMessage =
 interface WhatsAppServiceDependencies {
   sessionStore: WhatsAppIntakeSessionStore;
   processedMessageStore: WhatsAppProcessedMessageStore;
-  aiListingService: typeof aiListingService;
-  listingService: typeof listingService;
-  ownerProfileService: typeof ownerProfileService;
-  ownerClaimService: typeof ownerClaimService;
-  billingService: typeof billingService;
+  aiListingService: Pick<typeof aiListingService, "extractListing">;
+  listingService: Pick<typeof listingService, "createFromExtraction">;
+  ownerProfileService: Pick<typeof ownerProfileService, "findById" | "upsertFromWhatsApp">;
+  ownerClaimService: Pick<
+    typeof ownerClaimService,
+    "createListingClaim" | "markListingClaimedForVerifiedProfile"
+  >;
+  billingService: Pick<typeof billingService, "assertCanPublish" | "getListingCreditBalance">;
   saveMediaAssets: typeof saveIncomingMediaAssets;
   brokerWorkspaceService: WhatsAppBrokerWorkspaceService;
   revalidateListing: typeof revalidatePublicListing;
@@ -151,11 +155,11 @@ export class WhatsAppService {
       try {
         await this.dependencies.billingService.assertCanPublish(message.workspaceId);
       } catch (error) {
-        if (error instanceof ListingPlanLimitError) {
+        if (error instanceof NoListingCreditsError) {
           return {
-            status: "plan_limit_reached",
+            status: "no_listing_credits",
             to: message.from,
-            reply: planLimitReply(error.usage.plan.name, error.usage.activeListings, error.usage.limit),
+            reply: NO_LISTING_CREDITS_REPLY,
           };
         }
         throw error;
@@ -226,7 +230,7 @@ export class WhatsAppService {
       if (!session || (!session.messages.length && !session.media.length)) {
         return { status: "draft_failed", to: message.from, reply: EMPTY_DONE_REPLY };
       }
-      const usageBeforePublish = await this.dependencies.billingService.assertCanPublish(message.workspaceId);
+      await this.dependencies.billingService.assertCanPublish(message.workspaceId);
       const sessionText = session.messages.join("\n\n");
       const sessionMedia = onlyImageMedia(session.media);
       const resolvedMedia = await resolveIncomingMedia(provider, {
@@ -241,6 +245,9 @@ export class WhatsAppService {
         media: resolvedMedia,
       });
       const listing = await this.dependencies.listingService.createFromExtraction(message.workspaceId, extraction.data);
+      const remainingCredits = await this.dependencies.billingService.getListingCreditBalance(
+        message.workspaceId,
+      );
       const media = await this.dependencies.saveMediaAssets({ ...message, text: sessionText, media: resolvedMedia }, listing.id);
       const ownerProfile = await this.dependencies.ownerProfileService.upsertFromWhatsApp({
         workspaceId: message.workspaceId,
@@ -284,7 +291,7 @@ export class WhatsAppService {
         dashboardUrl,
         heroImageUrl: heroMedia?.type === "image" ? heroMedia.url : null,
         shouldVerifyBroker,
-        planUsage: usageAfterPublish(usageBeforePublish, listing),
+        remainingCredits,
       });
 
       return {
@@ -308,6 +315,9 @@ export class WhatsAppService {
         outboundMessages,
       };
     } catch (error) {
+      if (error instanceof NoListingCreditsError) {
+        return { status: "no_listing_credits", to: message.from, reply: NO_LISTING_CREDITS_REPLY };
+      }
       console.error("WhatsApp intake follow-up failed", error);
       return { status: "draft_failed", to: message.from, reply: FAILED_REPLY };
     }
@@ -425,22 +435,6 @@ function welcomeBackReply(name: string) {
   return `👋 Welcome back, ${name}!\n\nSend me your next property and I’ll take care of the page.\n\n🏡 Property: flat/shop/office, BHK, area, floor\n📍 Location: society, locality, city\n💰 Price/rent: deposit, brokerage if any\n✨ Highlights: amenities, furnishing, parking, view\n📸 Photos: rooms, kitchen, bathrooms, balcony/garden\n\nWhen everything is shared, type DONE.`;
 }
 
-function planLimitReply(planName: string, activeListings: number, limit: number) {
-  if (!planName || !limit) return PLAN_LIMIT_FALLBACK_REPLY;
-  return `🚦 You’ve reached your ${planName} plan limit.\n\nYou have ${activeListings}/${limit} live listings.\n\nPlease archive an older property from your dashboard or upgrade your plan to publish more.`;
-}
-
-function usageAfterPublish(usage: PlanUsage, listing: { status?: string }) {
-  if (listing.status && listing.status !== "published") return usage;
-  const activeListings = Math.min(usage.limit, usage.activeListings + 1);
-  return {
-    ...usage,
-    activeListings,
-    remaining: Math.max(0, usage.limit - activeListings),
-    isAtLimit: activeListings >= usage.limit,
-  };
-}
-
 function safeMessageId(messageId: string) {
   return messageId.replace(/\//g, "_");
 }
@@ -501,7 +495,7 @@ function buildReadyOutboundMessages({
   dashboardUrl,
   heroImageUrl,
   shouldVerifyBroker,
-  planUsage,
+  remainingCredits,
 }: {
   listingTitle: string;
   transactionType: "sale" | "rent";
@@ -510,7 +504,7 @@ function buildReadyOutboundMessages({
   dashboardUrl: string;
   heroImageUrl: string | null;
   shouldVerifyBroker: boolean;
-  planUsage?: PlanUsage;
+  remainingCredits?: number;
 }): WhatsAppOutboundMessage[] {
   const dealLabel = transactionType === "rent" ? "For rent" : "For sale";
   const priceLabel = price > 0 ? formatRupees(price) : "Price on request";
@@ -536,10 +530,10 @@ function buildReadyOutboundMessages({
           text: propertyCaption,
     },
   ];
-  if (planUsage && planUsage.limit > 0) {
+  if (typeof remainingCredits === "number") {
     messages.push({
       type: "text",
-      text: listingUsageReply(planUsage.plan.name, planUsage.remaining, planUsage.limit),
+      text: listingCreditsReply(remainingCredits),
     });
   }
   if (shouldVerifyBroker) {
@@ -552,11 +546,10 @@ function buildReadyOutboundMessages({
   return messages;
 }
 
-function listingUsageReply(planName: string, remaining: number, limit: number) {
-  const slotLabel = remaining === 1 ? "slot" : "slots";
-  const planLabel = planName ? `${planName} plan` : "current plan";
-  if (remaining <= 0) {
-    return `📦 This listing is live. Your ${planLabel} is now full.\n\nTo publish more, upgrade your plan or archive an older live listing.`;
+function listingCreditsReply(remainingCredits: number) {
+  const creditLabel = remainingCredits === 1 ? "listing credit" : "listing credits";
+  if (remainingCredits <= 0) {
+    return "📦 This listing is live. You have no listing credits remaining.\n\nBuy another package before publishing the next property.";
   }
-  return `📦 This listing is live. You have ${remaining}/${limit} live listing ${slotLabel} left on your ${planLabel}.\n\nNeed more room? Upgrade anytime from your dashboard.`;
+  return `📦 This listing is live. You have ${remainingCredits} ${creditLabel} remaining.`;
 }

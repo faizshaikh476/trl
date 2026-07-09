@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { defaultPlans, ListingPlanLimitError } from "@/lib/billing/billing-service";
+import { defaultPlans } from "@/lib/billing/billing-service";
+import { NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
 import type { ListingExtraction } from "@/lib/listings/listing.schema";
 import type { Listing } from "@/types/domain";
 import { MockWhatsAppProvider } from "./providers/mock-provider";
@@ -251,7 +252,7 @@ describe("WhatsAppService intake cues", () => {
     expect(followUp?.reply).not.toContain("Quick one-time step");
   });
 
-  it("includes remaining plan slots when a WhatsApp listing goes live", async () => {
+  it("includes remaining listing credits after a WhatsApp listing goes live", async () => {
     const store = createMemorySessionStore();
     const ai = {
       extractListing: vi.fn().mockResolvedValue({
@@ -282,13 +283,8 @@ describe("WhatsAppService intake cues", () => {
         markListingClaimedForVerifiedProfile: vi.fn().mockResolvedValue(undefined),
       },
       billingService: {
-        assertCanPublish: vi.fn().mockResolvedValue({
-          plan: { ...defaultPlans[0], name: "Starter", activeListingLimit: 10 },
-          activeListings: 1,
-          limit: 10,
-          remaining: 9,
-          isAtLimit: false,
-        }),
+        assertCanPublish: vi.fn().mockResolvedValue(undefined),
+        getListingCreditBalance: vi.fn().mockResolvedValue(7),
       },
       saveMediaAssets: vi.fn().mockResolvedValue([]),
     });
@@ -305,9 +301,8 @@ describe("WhatsAppService intake cues", () => {
     const followUp = await done.followUp?.();
 
     expect(followUp?.status).toBe("draft_ready");
-    expect(followUp?.reply).toContain("8/10 live listing slots left");
-    expect(followUp?.reply).toContain("Starter");
-    expect(followUp?.reply).toContain("Upgrade");
+    expect(followUp?.reply).toContain("7 listing credits remaining");
+    expect(followUp?.reply).not.toContain("live listing slots");
   });
 
   it("collects a photo batch with caption even when the broker did not say hi first", async () => {
@@ -479,7 +474,7 @@ describe("WhatsAppService intake cues", () => {
     expect(listings.createFromExtraction).not.toHaveBeenCalled();
   });
 
-  it("asks the broker to upgrade when the workspace has reached its live listing limit", async () => {
+  it("preserves the intake when the workspace has no active listing credits", async () => {
     const store = createMemorySessionStore();
     const ai = { extractListing: vi.fn() };
     const listings = { createFromExtraction: vi.fn() };
@@ -490,15 +485,8 @@ describe("WhatsAppService intake cues", () => {
       aiListingService: ai,
       listingService: listings,
       billingService: {
-        assertCanPublish: vi.fn().mockRejectedValue(
-          new ListingPlanLimitError({
-            plan: { ...defaultPlans[0], activeListingLimit: 1 },
-            activeListings: 1,
-            limit: 1,
-            remaining: 0,
-            isAtLimit: true,
-          }),
-        ),
+        assertCanPublish: vi.fn().mockRejectedValue(new NoListingCreditsError()),
+        getListingCreditBalance: vi.fn(),
       },
     });
     const provider = new MockWhatsAppProvider();
@@ -513,9 +501,9 @@ describe("WhatsAppService intake cues", () => {
     const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
     const session = await store.getActiveSession("workspace_broker_917276709161", "917276709161");
 
-    expect(done.status).toBe("plan_limit_reached");
-    expect(done.reply).toContain("Starter plan limit");
-    expect(done.reply).toContain("archive an older property");
+    expect(done.status).toBe("no_listing_credits");
+    expect(done.reply).toContain("no active listing credits");
+    expect(done.reply).toContain("property details are still saved");
     expect(done.followUp).toBeUndefined();
     expect(ai.extractListing).not.toHaveBeenCalled();
     expect(listings.createFromExtraction).not.toHaveBeenCalled();
@@ -868,5 +856,6 @@ function createUnlimitedBillingService() {
       remaining: defaultPlans[0].activeListingLimit,
       isAtLimit: false,
     }),
+    getListingCreditBalance: vi.fn().mockResolvedValue(defaultPlans[0].listingCredits),
   };
 }

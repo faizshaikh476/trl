@@ -7,7 +7,7 @@ import {
   type ListingExtraction,
   type ManualListingInput,
 } from "../listing.schema";
-import type { ListingRepository } from "./listing-repository";
+import type { ListingRepository, PublicationOptions } from "./listing-repository";
 
 export class FirestoreListingRepository implements ListingRepository {
   async listAll() {
@@ -90,11 +90,16 @@ export class FirestoreListingRepository implements ListingRepository {
     return doc.exists ? ({ id: doc.id, ...doc.data() } as Listing) : null;
   }
 
-  async createFromExtraction(workspaceId: string, extraction: ListingExtraction) {
+  async createFromExtraction(
+    workspaceId: string,
+    extraction: ListingExtraction,
+    publication?: PublicationOptions,
+  ) {
     const now = new Date().toISOString();
     const normalizedExtraction = normalizeListingExtractionTitle(extraction);
     const listingRef = getAdminDb().collection(firestorePaths.workspaceListings(workspaceId)).doc();
-    const expiresAt = addDaysIso(normalizedExtraction.transactionType === "rent" ? 30 : 60);
+    const credit = await publication?.consumeCredit?.(listingRef.id);
+    const expiresAt = addDaysIso(publication?.visibilityDays ?? 60);
     const listing: Listing = {
       id: listingRef.id,
       workspaceId,
@@ -142,6 +147,8 @@ export class FirestoreListingRepository implements ListingRepository {
       createdBy: "whatsapp",
       publishedAt: now,
       expiresAt,
+      creditConsumedAt: credit?.createdAt ?? null,
+      creditLedgerEntryId: credit?.ledgerEntryId ?? null,
       lastConfirmedAt: null,
       freshnessStatus: "Updated today",
       seoTitle: normalizedExtraction.seoTitle,
@@ -262,30 +269,44 @@ export class FirestoreListingRepository implements ListingRepository {
     return next;
   }
 
-  async updateStatus(id: string, status: ListingStatus) {
+  async updateStatus(id: string, status: ListingStatus, publication?: PublicationOptions) {
     const listing = await this.findById(id);
     if (!listing) throw new Error("Listing not found");
-    return this.updateStatusForListing(listing, status);
+    return this.updateStatusForListing(listing, status, publication);
   }
 
-  async updateStatusInWorkspace(workspaceId: string, id: string, status: ListingStatus) {
+  async updateStatusInWorkspace(
+    workspaceId: string,
+    id: string,
+    status: ListingStatus,
+    publication?: PublicationOptions,
+  ) {
     const listing = await this.findByWorkspaceId(workspaceId, id);
     if (!listing) throw new Error("Listing not found");
-    return this.updateStatusForListing(listing, status);
+    return this.updateStatusForListing(listing, status, publication);
   }
 
-  private async updateStatusForListing(listing: Listing, status: ListingStatus) {
+  private async updateStatusForListing(
+    listing: Listing,
+    status: ListingStatus,
+    publication?: PublicationOptions,
+  ) {
     const now = new Date().toISOString();
     const patch: Partial<Listing> = {
       status,
       updatedAt: now,
     };
     if (status === "published") {
+      const credit = await publication?.consumeCredit?.(listing.id);
       patch.publishedAt = listing.publishedAt ?? now;
-      patch.expiresAt = addDaysIso(listing.transactionType === "rent" ? 30 : 60);
+      patch.expiresAt = addDaysIso(publication?.visibilityDays ?? 60);
       patch.freshnessStatus = "Updated today";
+      if (credit) {
+        patch.creditConsumedAt = credit.createdAt;
+        patch.creditLedgerEntryId = credit.ledgerEntryId;
+      }
     }
-    if (status === "sold" || status === "rented" || status === "archived") {
+    if (status === "sold" || status === "rented" || status === "archived" || status === "unpublished") {
       patch.expiresAt = null;
     }
     await getAdminDb().doc(firestorePaths.workspaceListing(listing.workspaceId, listing.id)).update(patch);
@@ -330,6 +351,8 @@ export class FirestoreListingRepository implements ListingRepository {
       createdBy,
       publishedAt: null,
       expiresAt: null,
+      creditConsumedAt: null,
+      creditLedgerEntryId: null,
       lastConfirmedAt: null,
       freshnessStatus: "Draft",
       createdAt: now,

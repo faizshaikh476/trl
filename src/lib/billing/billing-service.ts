@@ -1,6 +1,9 @@
+import {
+  creditWalletService,
+  NoListingCreditsError,
+} from "@/lib/billing/credit-wallet-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
-import { listingService } from "@/lib/listings/listing-service";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import type { Listing, Plan, Workspace } from "@/types/domain";
 
@@ -110,19 +113,37 @@ export class BillingService {
         : workspaceOrId;
     if (!workspace) throw new Error("Workspace not found");
 
-    const [plan, listings] = await Promise.all([
+    const [{ listingService }, plan] = await Promise.all([
+      import("@/lib/listings/listing-service"),
       this.findPlan(workspace.planId),
-      listingService.listByWorkspace(workspace.id),
     ]);
+    const listings = await listingService.listByWorkspace(workspace.id);
 
     return calculatePlanUsage(plan, listings);
   }
 
+  async findWorkspacePlan(workspaceId: string) {
+    const workspace = await workspaceService.findById(workspaceId);
+    if (!workspace) throw new Error("Workspace not found");
+    return this.findPlan(workspace.planId);
+  }
+
+  async getListingCreditBalance(workspaceId: string) {
+    return creditWalletService.getBalance(workspaceId);
+  }
+
   async assertCanPublish(workspaceId: string, listingBeingPublished?: Listing | null) {
-    if (listingBeingPublished?.status === "published") return this.getWorkspaceUsage(workspaceId);
-    const usage = await this.getWorkspaceUsage(workspaceId);
-    if (usage.isAtLimit) throw new ListingPlanLimitError(usage);
-    return usage;
+    const plan = await this.findWorkspacePlan(workspaceId);
+    if (listingBeingPublished?.status === "published") {
+      return planCreditUsage(plan, await creditWalletService.getBalance(workspaceId));
+    }
+
+    const wallet = await creditWalletService.assertCanReactivate(workspaceId);
+    if (!listingBeingPublished?.creditLedgerEntryId && !listingBeingPublished?.creditConsumedAt) {
+      if (wallet.availableCredits <= 0) throw new NoListingCreditsError();
+    }
+
+    return planCreditUsage(plan, wallet.availableCredits);
   }
 
   createCheckoutPlaceholder(planId: string) {
@@ -134,6 +155,22 @@ export class BillingService {
     };
   }
 }
+
+function planCreditUsage(plan: Plan, availableCredits: number): PlanUsage {
+  const remaining = Math.max(0, availableCredits);
+  return {
+    plan,
+    activeListings: Math.max(0, plan.listingCredits - remaining),
+    limit: plan.listingCredits,
+    remaining,
+    isAtLimit: remaining <= 0,
+  };
+}
+
+/*
+  Legacy usage calculation remains for callers that only need historical slot-style
+  display data. Publication gating uses wallet credits through assertCanPublish.
+*/
 
 export function selectDefaultPlanId(plans: Plan[]) {
   const activePlans = plans

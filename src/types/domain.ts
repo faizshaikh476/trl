@@ -165,6 +165,8 @@ export interface Listing {
   createdBy: string;
   publishedAt: TimestampString | null;
   expiresAt: TimestampString | null;
+  creditConsumedAt?: TimestampString | null;
+  creditLedgerEntryId?: string | null;
   lastConfirmedAt: TimestampString | null;
   freshnessStatus: string;
   seoTitle: string;
