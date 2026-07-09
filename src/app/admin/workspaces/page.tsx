@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Building2, CheckCircle2, Gift, Save, WalletCards } from "lucide-react";
 import { AdminSectionPage } from "@/components/admin/admin-section-page";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +153,7 @@ export default async function AdminWorkspacesPage() {
                       <Gift className="size-4 text-cyan-200" />
                       Grant promotional credits
                     </div>
+                    <input type="hidden" name="idempotencyKey" value={randomUUID()} />
                     <label className="grid gap-1 text-sm font-medium text-slate-300">
                       Quantity
                       <input
@@ -204,8 +206,9 @@ async function getWalletInspection(workspaceId: string): Promise<WalletInspectio
     db.doc(firestorePaths.workspaceWallet(workspaceId)).get(),
     db
       .collection(firestorePaths.workspaceCreditLedger(workspaceId))
+      .where("type", "==", "grant")
       .orderBy("createdAt", "desc")
-      .limit(10)
+      .limit(1)
       .get(),
   ]);
   const entries = ledgerSnapshot.docs.map((doc) => doc.data() as CreditLedgerEntry);

@@ -34,13 +34,17 @@ beforeEach(() => {
     workspaceId: null,
   });
   mocks.grantCredits.mockResolvedValue({
-    id: "grant:promotion:admin:admin_1:workspace_1:5:launch-promo",
+    id: "grant:promotion:admin:admin_1:workspace_1:grant-a",
   });
 });
 
 describe("grantPromotionalCreditsAction", () => {
-  it("grants promotional credits with a deterministic admin source id", async () => {
-    const formData = grantFormData({ quantity: "5", reason: "Launch promo" });
+  it("grants promotional credits with a submission-scoped deterministic source id", async () => {
+    const formData = grantFormData({
+      quantity: "5",
+      reason: "Launch promo",
+      idempotencyKey: "grant-a",
+    });
 
     await grantPromotionalCreditsAction("workspace_1", formData);
 
@@ -49,10 +53,69 @@ describe("grantPromotionalCreditsAction", () => {
       quantity: 5,
       validityDays: 30,
       sourceType: "promotion",
-      sourceId: "admin:admin_1:workspace_1:5:launch-promo",
+      sourceId: "admin:admin_1:workspace_1:grant-a",
       reason: "Launch promo",
     });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/workspaces");
+  });
+
+  it("allows two separate grants with the same quantity and reason when idempotency keys differ", async () => {
+    await grantPromotionalCreditsAction(
+      "workspace_1",
+      grantFormData({
+        quantity: "5",
+        reason: "Launch promo",
+        idempotencyKey: "grant-a",
+      }),
+    );
+    await grantPromotionalCreditsAction(
+      "workspace_1",
+      grantFormData({
+        quantity: "5",
+        reason: "Launch promo",
+        idempotencyKey: "grant-b",
+      }),
+    );
+
+    expect(mocks.grantCredits).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        sourceId: "admin:admin_1:workspace_1:grant-a",
+        quantity: 5,
+        reason: "Launch promo",
+      }),
+    );
+    expect(mocks.grantCredits).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        sourceId: "admin:admin_1:workspace_1:grant-b",
+        quantity: 5,
+        reason: "Launch promo",
+      }),
+    );
+  });
+
+  it("keeps repeated submissions with the same idempotency key idempotent", async () => {
+    const formData = grantFormData({
+      quantity: "5",
+      reason: "Launch promo",
+      idempotencyKey: "grant-a",
+    });
+
+    await grantPromotionalCreditsAction("workspace_1", formData);
+    await grantPromotionalCreditsAction("workspace_1", formData);
+
+    expect(mocks.grantCredits).toHaveBeenCalledTimes(2);
+    expect(mocks.grantCredits.mock.calls[0][0]).toMatchObject({
+      sourceId: "admin:admin_1:workspace_1:grant-a",
+      quantity: 5,
+      reason: "Launch promo",
+    });
+    expect(mocks.grantCredits.mock.calls[1][0]).toMatchObject({
+      sourceId: "admin:admin_1:workspace_1:grant-a",
+      quantity: 5,
+      reason: "Launch promo",
+    });
   });
 
   it("rejects non-super admins before granting credits", async () => {
@@ -67,7 +130,11 @@ describe("grantPromotionalCreditsAction", () => {
     await expect(
       grantPromotionalCreditsAction(
         "workspace_1",
-        grantFormData({ quantity: "5", reason: "Launch promo" }),
+        grantFormData({
+          quantity: "5",
+          reason: "Launch promo",
+          idempotencyKey: "grant-a",
+        }),
       ),
     ).rejects.toThrow("Only super admins can grant promotional credits.");
 
@@ -78,14 +145,22 @@ describe("grantPromotionalCreditsAction", () => {
     await expect(
       grantPromotionalCreditsAction(
         "workspace_1",
-        grantFormData({ quantity: "1.5", reason: "Launch promo" }),
+        grantFormData({
+          quantity: "1.5",
+          reason: "Launch promo",
+          idempotencyKey: "grant-a",
+        }),
       ),
     ).rejects.toThrow("Quantity must be a positive whole number.");
 
     await expect(
       grantPromotionalCreditsAction(
         "workspace_1",
-        grantFormData({ quantity: "0", reason: "Launch promo" }),
+        grantFormData({
+          quantity: "0",
+          reason: "Launch promo",
+          idempotencyKey: "grant-a",
+        }),
       ),
     ).rejects.toThrow("Quantity must be a positive whole number.");
 
@@ -96,7 +171,11 @@ describe("grantPromotionalCreditsAction", () => {
     await expect(
       grantPromotionalCreditsAction(
         "workspace_1",
-        grantFormData({ quantity: "5", reason: "  " }),
+        grantFormData({
+          quantity: "5",
+          reason: "  ",
+          idempotencyKey: "grant-a",
+        }),
       ),
     ).rejects.toThrow("Reason is required.");
 
@@ -104,7 +183,11 @@ describe("grantPromotionalCreditsAction", () => {
   });
 
   it("requires grant confirmation", async () => {
-    const formData = grantFormData({ quantity: "5", reason: "Launch promo" });
+    const formData = grantFormData({
+      quantity: "5",
+      reason: "Launch promo",
+      idempotencyKey: "grant-a",
+    });
     formData.delete("confirmation");
 
     await expect(grantPromotionalCreditsAction("workspace_1", formData)).rejects.toThrow(
@@ -113,12 +196,32 @@ describe("grantPromotionalCreditsAction", () => {
 
     expect(mocks.grantCredits).not.toHaveBeenCalled();
   });
+
+  it("requires an idempotency key generated by the grant form", async () => {
+    const formData = grantFormData({
+      quantity: "5",
+      reason: "Launch promo",
+      idempotencyKey: "grant-a",
+    });
+    formData.delete("idempotencyKey");
+
+    await expect(grantPromotionalCreditsAction("workspace_1", formData)).rejects.toThrow(
+      "Idempotency key is required.",
+    );
+
+    expect(mocks.grantCredits).not.toHaveBeenCalled();
+  });
 });
 
-function grantFormData(input: { quantity: string; reason: string }) {
+function grantFormData(input: {
+  quantity: string;
+  reason: string;
+  idempotencyKey: string;
+}) {
   const formData = new FormData();
   formData.set("quantity", input.quantity);
   formData.set("reason", input.reason);
+  formData.set("idempotencyKey", input.idempotencyKey);
   formData.set("confirmation", "confirm");
   return formData;
 }

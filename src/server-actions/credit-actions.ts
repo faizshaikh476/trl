@@ -19,6 +19,7 @@ export async function grantPromotionalCreditsAction(workspaceId: string, formDat
 
   const quantity = positiveWholeNumber(formData, "quantity");
   const reason = requiredReason(formData);
+  const idempotencyKey = requiredIdempotencyKey(formData);
   const confirmation = String(formData.get("confirmation") ?? "").trim();
   if (confirmation !== "confirm") {
     throw new Error("Confirm the promotional credit grant before submitting.");
@@ -32,8 +33,7 @@ export async function grantPromotionalCreditsAction(workspaceId: string, formDat
     sourceId: promotionalGrantSourceId({
       adminId: admin.id,
       workspaceId: normalizedWorkspaceId,
-      quantity,
-      reason,
+      idempotencyKey,
     }),
     reason,
   });
@@ -56,18 +56,25 @@ function requiredReason(formData: FormData) {
   return reason;
 }
 
+function requiredIdempotencyKey(formData: FormData) {
+  const value = String(formData.get("idempotencyKey") ?? "").trim();
+  if (!value) throw new Error("Idempotency key is required.");
+  if (!/^[a-zA-Z0-9_-]{6,128}$/.test(value)) {
+    throw new Error("Idempotency key is invalid.");
+  }
+  return value;
+}
+
 function promotionalGrantSourceId(input: {
   adminId: string;
   workspaceId: string;
-  quantity: number;
-  reason: string;
+  idempotencyKey: string;
 }) {
   return [
     "admin",
     sourceSegment(input.adminId),
     sourceSegment(input.workspaceId),
-    String(input.quantity),
-    sourceSegment(input.reason),
+    input.idempotencyKey,
   ].join(":");
 }
 
