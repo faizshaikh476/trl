@@ -61,6 +61,10 @@ export interface Plan {
   creditValidityDays: number;
   listingVisibilityDays: number;
   featured: boolean;
+  /** @deprecated Legacy display field kept until Tasks 3/4 remove old consumers. */
+  priceLabel?: string;
+  /** @deprecated Legacy limit field kept until Tasks 3/4 remove old consumers. */
+  activeListingLimit?: number;
   status: "active" | "inactive";
   sortOrder: number;
   createdAt: TimestampString;

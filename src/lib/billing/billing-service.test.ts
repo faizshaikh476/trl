@@ -1,22 +1,66 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Listing, Plan } from "@/types/domain";
+
+const mocks = vi.hoisted(() => {
+  const planDocGet = vi.fn();
+  const planDocSet = vi.fn();
+  const planDocDelete = vi.fn();
+  const planDocRef = {
+    get: planDocGet,
+    set: planDocSet,
+    delete: planDocDelete,
+  };
+  const getAdminDb = vi.fn(() => ({
+    collection: vi.fn(),
+    doc: vi.fn(() => planDocRef),
+  }));
+
+  return {
+    planDocGet,
+    planDocSet,
+    planDocDelete,
+    planDocRef,
+    getAdminDb,
+  };
+});
+
+vi.mock("@/lib/firebase/admin", () => ({
+  getAdminDb: mocks.getAdminDb,
+}));
+
+vi.mock("@/lib/listings/listing-service", () => ({
+  listingService: {
+    listByWorkspace: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/workspaces/workspace-service", () => ({
+  workspaceService: {
+    list: vi.fn(),
+    findById: vi.fn(),
+  },
+}));
+
 import {
+  BillingService,
   calculatePlanUsage,
   defaultPlans,
   formatPlanPrice,
   parsePlanInput,
   selectDefaultPlanId,
 } from "./billing-service";
-import type { Listing, Plan } from "@/types/domain";
+
+beforeEach(() => {
+  mocks.planDocGet.mockReset();
+  mocks.planDocSet.mockReset();
+  mocks.planDocDelete.mockReset();
+  mocks.getAdminDb.mockClear();
+});
 
 describe("calculatePlanUsage", () => {
-  it("counts only published listings against the plan limit", () => {
+  it("keeps published-listing counting behavior for legacy compatibility", () => {
     const plan = { ...defaultPlans[0], listingCredits: 2 };
-    const usage = calculatePlanUsage(plan, [
-      listing("published"),
-      listing("draft"),
-      listing("archived"),
-      listing("sold"),
-    ]);
+    const usage = calculatePlanUsage(plan, [listing("published")]);
 
     expect(usage.activeListings).toBe(1);
     expect(usage.remaining).toBe(1);
@@ -43,6 +87,56 @@ describe("parsePlanInput", () => {
     formData.set("creditValidityDays", "30");
     formData.set("listingVisibilityDays", "60");
     formData.set("featured", "true");
+    formData.set("status", "active");
+    formData.set("sortOrder", "20");
+
+    expect(parsePlanInput(formData)).toEqual({
+      name: "Growth",
+      amountPaise: 799900,
+      currency: "INR",
+      listingCredits: 50,
+      creditValidityDays: 30,
+      listingVisibilityDays: 60,
+      featured: true,
+      status: "active",
+      sortOrder: 20,
+    });
+  });
+
+  it("accepts the current legacy admin form fields", () => {
+    const formData = new FormData();
+    formData.set("name", "Growth");
+    formData.set("priceLabel", "₹7,999/mo");
+    formData.set("activeListingLimit", "50");
+    formData.set("status", "active");
+    formData.set("sortOrder", "20");
+
+    expect(parsePlanInput(formData)).toEqual({
+      name: "Growth",
+      amountPaise: 799900,
+      currency: "INR",
+      listingCredits: 50,
+      creditValidityDays: 30,
+      listingVisibilityDays: 60,
+      featured: false,
+      priceLabel: "₹7,999/mo",
+      activeListingLimit: 50,
+      status: "active",
+      sortOrder: 20,
+    });
+  });
+
+  it("prefers new numeric fields when both new and legacy inputs are supplied", () => {
+    const formData = new FormData();
+    formData.set("name", "Growth");
+    formData.set("amountPaise", "799900");
+    formData.set("currency", "INR");
+    formData.set("listingCredits", "50");
+    formData.set("creditValidityDays", "30");
+    formData.set("listingVisibilityDays", "60");
+    formData.set("featured", "true");
+    formData.set("priceLabel", "₹1/mo");
+    formData.set("activeListingLimit", "1");
     formData.set("status", "active");
     formData.set("sortOrder", "20");
 
@@ -113,6 +207,86 @@ describe("formatPlanPrice", () => {
         currency: "INR",
       }),
     ).toBe("INR 7,999");
+  });
+});
+
+describe("defaultPlans", () => {
+  it("uses 30-day credit validity and 60-day listing visibility for every default plan", () => {
+    expect(defaultPlans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          creditValidityDays: 30,
+          listingVisibilityDays: 60,
+        }),
+      ]),
+    );
+    expect(defaultPlans.every((plan) => plan.creditValidityDays === 30)).toBe(true);
+    expect(defaultPlans.every((plan) => plan.listingVisibilityDays === 60)).toBe(true);
+  });
+
+  it("keeps deprecated legacy display fields derived for compatibility", () => {
+    expect(defaultPlans[0]).toMatchObject({
+      activeListingLimit: defaultPlans[0].listingCredits,
+      priceLabel: formatPlanPrice(defaultPlans[0]),
+    });
+  });
+});
+
+describe("BillingService.upsertPlan", () => {
+  it("merges updates without dropping legacy or unknown fields", async () => {
+    mocks.planDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: "growth",
+        name: "Growth",
+        description: "Legacy description",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        customField: "preserve-me",
+        priceLabel: "Custom",
+        activeListingLimit: 999,
+      }),
+    });
+
+    const service = new BillingService();
+    const plan = await service.upsertPlan("growth", {
+      name: "Growth",
+      amountPaise: 799900,
+      currency: "INR",
+      listingCredits: 50,
+      creditValidityDays: 30,
+      listingVisibilityDays: 60,
+      featured: true,
+      status: "active",
+      sortOrder: 20,
+    });
+
+    expect(plan).toMatchObject({
+      id: "growth",
+      name: "Growth",
+      description: "Legacy description",
+      amountPaise: 799900,
+      currency: "INR",
+      listingCredits: 50,
+      creditValidityDays: 30,
+      listingVisibilityDays: 60,
+      featured: true,
+      activeListingLimit: 50,
+      priceLabel: "INR 7,999",
+      customField: "preserve-me",
+      status: "active",
+      sortOrder: 20,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    expect(mocks.planDocSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customField: "preserve-me",
+        activeListingLimit: 50,
+        priceLabel: "INR 7,999",
+      }),
+      { merge: true },
+    );
   });
 });
 
