@@ -156,6 +156,8 @@ export function calculatePlanUsage(plan: Plan, listings: Listing[]): PlanUsage {
 }
 
 export function parsePlanInput(formData: FormData): PlanInput {
+  const name = requiredString(formData, "name");
+  const isFreePlan = isFreePlanIdentifier(name, planIdFromName(name));
   const hasNewAmountPaise = hasFormValue(formData, "amountPaise");
   const hasNewListingCredits = hasFormValue(formData, "listingCredits");
   const hasNewCurrency = hasFormValue(formData, "currency");
@@ -173,8 +175,8 @@ export function parsePlanInput(formData: FormData): PlanInput {
   const legacyPriceLabel = optionalString(formData, "priceLabel");
   const legacyActiveListingLimit = optionalPositiveWholeNumber(formData, "activeListingLimit");
   const amountPaise = hasNewAmountPaise
-    ? positiveWholeNumber(formData, "amountPaise", "Amount must be a positive whole number.")
-    : parseLegacyAmountPaise(legacyPriceLabel);
+    ? wholeNumberAmountPaise(formData, "amountPaise", isFreePlan)
+    : parseLegacyAmountPaise(legacyPriceLabel, isFreePlan);
   const currency = hasNewCurrency ? requiredCurrency(formData) : "INR";
   const listingCredits = hasNewListingCredits
     ? positiveWholeNumber(
@@ -204,7 +206,7 @@ export function parsePlanInput(formData: FormData): PlanInput {
   if (status !== "active" && status !== "inactive") throw new Error("Invalid plan status.");
 
   return {
-    name: requiredString(formData, "name"),
+    name,
     amountPaise,
     currency,
     listingCredits,
@@ -270,6 +272,14 @@ function positiveWholeNumber(formData: FormData, key: string, errorMessage: stri
   return value;
 }
 
+function wholeNumberAmountPaise(formData: FormData, key: string, allowZero: boolean) {
+  const value = Number(formData.get(key));
+  if (!Number.isInteger(value)) throw new Error("Amount must be a positive whole number.");
+  if (value === 0 && allowZero) return value;
+  if (value < 1) throw new Error("Amount must be a positive whole number.");
+  return value;
+}
+
 function optionalPositiveWholeNumber(formData: FormData, key: string) {
   const value = formData.get(key);
   if (value == null || String(value).trim() === "") return null;
@@ -291,20 +301,28 @@ function booleanInput(value: FormDataEntryValue | null) {
   return normalized === "true" || normalized === "1" || normalized === "on";
 }
 
-function parseLegacyAmountPaise(priceLabel: string | null) {
+function parseLegacyAmountPaise(priceLabel: string | null, isFreePlan: boolean) {
   if (!priceLabel) throw new Error("Amount must be a positive whole number.");
   const numeric = priceLabel.replace(/[^0-9.]/g, "");
-  if (!numeric) return 0;
-  const rupees = Number(numeric);
-  if (!Number.isFinite(rupees) || rupees < 0) {
+  if (!numeric) {
+    if (isFreePlan && priceLabel.trim().toLowerCase() === "free") return 0;
     throw new Error("Amount must be a positive whole number.");
   }
-  return Math.round(rupees * 100);
+  const rupees = Number(numeric);
+  if (!Number.isFinite(rupees)) {
+    throw new Error("Amount must be a positive whole number.");
+  }
+  const amountPaise = Math.round(rupees * 100);
+  if (amountPaise === 0 && isFreePlan) return amountPaise;
+  if (amountPaise < 1) throw new Error("Amount must be a positive whole number.");
+  return amountPaise;
 }
 
 function normalizePlanRecord(plan: Record<string, unknown>) {
+  const isFreePlan = isFreePlanIdentifier(readString(plan.name), readString(plan.id));
   const amountPaise =
-    readPositiveWholeNumber(plan.amountPaise) ?? parseLegacyAmountPaise(readString(plan.priceLabel));
+    readAmountPaise(plan.amountPaise, isFreePlan) ??
+    parseLegacyAmountPaise(readString(plan.priceLabel), isFreePlan);
   const listingCredits =
     readPositiveWholeNumber(plan.listingCredits) ?? readPositiveWholeNumber(plan.activeListingLimit) ?? 0;
   const normalized = {
@@ -327,12 +345,23 @@ function readPositiveWholeNumber(value: unknown) {
   return value;
 }
 
+function readAmountPaise(value: unknown, allowZero: boolean) {
+  if (typeof value !== "number" || !Number.isInteger(value)) return null;
+  if (value === 0 && allowZero) return value;
+  if (value < 1) return null;
+  return value;
+}
+
 function readString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function readBoolean(value: unknown) {
   return value === true;
+}
+
+function isFreePlanIdentifier(name: string | null, id: string | null) {
+  return name?.trim().toLowerCase() === "free" || id?.trim().toLowerCase() === "free";
 }
 
 function makeDefaultPlan(

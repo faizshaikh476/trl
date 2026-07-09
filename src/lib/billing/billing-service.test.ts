@@ -126,6 +126,41 @@ describe("parsePlanInput", () => {
     });
   });
 
+  it("rejects legacy nonnumeric price labels for non-free plans", () => {
+    const formData = new FormData();
+    formData.set("name", "Agency");
+    formData.set("priceLabel", "Custom");
+    formData.set("activeListingLimit", "500");
+    formData.set("status", "active");
+    formData.set("sortOrder", "30");
+
+    expect(() => parsePlanInput(formData)).toThrow("Amount must be a positive whole number.");
+  });
+
+  it("accepts a zero amount for an explicit Free plan", () => {
+    const formData = new FormData();
+    formData.set("name", "Free");
+    formData.set("amountPaise", "0");
+    formData.set("currency", "INR");
+    formData.set("listingCredits", "5");
+    formData.set("creditValidityDays", "30");
+    formData.set("listingVisibilityDays", "60");
+    formData.set("status", "active");
+    formData.set("sortOrder", "5");
+
+    expect(parsePlanInput(formData)).toEqual({
+      name: "Free",
+      amountPaise: 0,
+      currency: "INR",
+      listingCredits: 5,
+      creditValidityDays: 30,
+      listingVisibilityDays: 60,
+      featured: false,
+      status: "active",
+      sortOrder: 5,
+    });
+  });
+
   it("prefers new numeric fields when both new and legacy inputs are supplied", () => {
     const formData = new FormData();
     formData.set("name", "Growth");
