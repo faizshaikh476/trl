@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { defaultPlans } from "@/lib/billing/billing-service";
 import { NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
+import { verifyPurchaseLinkToken } from "@/lib/billing/purchase-link";
 import type { ListingExtraction } from "@/lib/listings/listing.schema";
+import type { Plan } from "@/types/domain";
 import type { Listing } from "@/types/domain";
 import { MockWhatsAppProvider } from "./providers/mock-provider";
 import { WhatsAppService } from "./whatsapp-service";
@@ -487,6 +489,7 @@ describe("WhatsAppService intake cues", () => {
       billingService: {
         assertCanPublish: vi.fn().mockRejectedValue(new NoListingCreditsError()),
         getListingCreditBalance: vi.fn(),
+        listActivePlans: vi.fn().mockResolvedValue([]),
       },
     });
     const provider = new MockWhatsAppProvider();
@@ -508,6 +511,70 @@ describe("WhatsAppService intake cues", () => {
     expect(ai.extractListing).not.toHaveBeenCalled();
     expect(listings.createFromExtraction).not.toHaveBeenCalled();
     expect(session?.status).toBe("collecting");
+  });
+
+  it("sends direct paid package links when the workspace has no active listing credits", async () => {
+    const originalSecret = process.env.PURCHASE_LINK_SECRET;
+    const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.PURCHASE_LINK_SECRET = "whatsapp-purchase-link-secret";
+    process.env.NEXT_PUBLIC_APP_URL = "https://therealestatelink.test";
+    try {
+      const store = createMemorySessionStore();
+      const service = new WhatsAppService({
+        sessionStore: store,
+        processedMessageStore: createMemoryProcessedMessageStore(),
+        brokerWorkspaceService: createBrokerWorkspaceService(),
+        billingService: {
+          assertCanPublish: vi.fn().mockRejectedValue(new NoListingCreditsError()),
+          getListingCreditBalance: vi.fn(),
+          listActivePlans: vi.fn().mockResolvedValue([
+            plan("free", "Free", 0, 1),
+            plan("growth", "Growth", 499900, 50),
+            plan("agency", "Agency", 999900, 125),
+          ]),
+        },
+      });
+      const provider = new MockWhatsAppProvider();
+
+      await service.handleWebhook(
+        {
+          text: "2 BHK for rent in Wakad, 29000 rent",
+          from: "917276709161",
+        },
+        provider,
+      );
+      const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
+      const session = await store.getActiveSession("workspace_broker_917276709161", "917276709161");
+      const tokens = purchaseTokensFromReply(done.reply);
+
+      expect(done.status).toBe("no_listing_credits");
+      expect(done.reply).toContain("Growth");
+      expect(done.reply).toContain("INR 4,999");
+      expect(done.reply).toContain("Agency");
+      expect(done.reply).toContain("INR 9,999");
+      expect(done.reply).not.toContain("Free");
+      expect(tokens).toHaveLength(2);
+      expect(
+        tokens.map((token) =>
+          verifyPurchaseLinkToken(token, { workspaceId: "workspace_broker_917276709161" }),
+        ),
+      ).toEqual([
+        expect.objectContaining({ workspaceId: "workspace_broker_917276709161", planId: "growth" }),
+        expect.objectContaining({ workspaceId: "workspace_broker_917276709161", planId: "agency" }),
+      ]);
+      expect(session?.status).toBe("collecting");
+    } finally {
+      if (originalSecret == null) {
+        delete process.env.PURCHASE_LINK_SECRET;
+      } else {
+        process.env.PURCHASE_LINK_SECRET = originalSecret;
+      }
+      if (originalAppUrl == null) {
+        delete process.env.NEXT_PUBLIC_APP_URL;
+      } else {
+        process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+      }
+    }
   });
 
   it("ignores duplicate Meta deliveries for the same inbound message id", async () => {
@@ -857,5 +924,30 @@ function createUnlimitedBillingService() {
       isAtLimit: false,
     }),
     getListingCreditBalance: vi.fn().mockResolvedValue(defaultPlans[0].listingCredits),
+    listActivePlans: vi.fn().mockResolvedValue(defaultPlans),
+  };
+}
+
+function purchaseTokensFromReply(reply: string) {
+  return [...reply.matchAll(/\/pricing\?purchase=([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/g)].map(
+    (match) => match[1],
+  );
+}
+
+function plan(id: string, name: string, amountPaise: number, listingCredits: number): Plan {
+  return {
+    id,
+    name,
+    description: `${name} package`,
+    amountPaise,
+    currency: "INR",
+    listingCredits,
+    creditValidityDays: 30,
+    listingVisibilityDays: 60,
+    featured: false,
+    status: "active",
+    sortOrder: listingCredits,
+    createdAt: "2026-07-10T00:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:00.000Z",
   };
 }

@@ -1,6 +1,7 @@
 import { aiListingService } from "@/lib/ai/ai-service";
-import { billingService } from "@/lib/billing/billing-service";
+import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
 import { NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
+import { createPurchaseLinkToken } from "@/lib/billing/purchase-link";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { formatRupees } from "@/lib/format";
@@ -55,7 +56,10 @@ interface WhatsAppServiceDependencies {
     typeof ownerClaimService,
     "createListingClaim" | "markListingClaimedForVerifiedProfile"
   >;
-  billingService: Pick<typeof billingService, "assertCanPublish" | "getListingCreditBalance">;
+  billingService: Pick<
+    typeof billingService,
+    "assertCanPublish" | "getListingCreditBalance" | "listActivePlans"
+  >;
   saveMediaAssets: typeof saveIncomingMediaAssets;
   brokerWorkspaceService: WhatsAppBrokerWorkspaceService;
   revalidateListing: typeof revalidatePublicListing;
@@ -159,7 +163,7 @@ export class WhatsAppService {
           return {
             status: "no_listing_credits",
             to: message.from,
-            reply: NO_LISTING_CREDITS_REPLY,
+            reply: await this.noListingCreditsReply(message.workspaceId),
           };
         }
         throw error;
@@ -316,7 +320,11 @@ export class WhatsAppService {
       };
     } catch (error) {
       if (error instanceof NoListingCreditsError) {
-        return { status: "no_listing_credits", to: message.from, reply: NO_LISTING_CREDITS_REPLY };
+        return {
+          status: "no_listing_credits",
+          to: message.from,
+          reply: await this.noListingCreditsReply(message.workspaceId),
+        };
       }
       console.error("WhatsApp intake follow-up failed", error);
       return { status: "draft_failed", to: message.from, reply: FAILED_REPLY };
@@ -336,6 +344,26 @@ export class WhatsAppService {
       });
     }
     return "";
+  }
+
+  private async noListingCreditsReply(workspaceId: string) {
+    const choices = (await this.dependencies.billingService.listActivePlans())
+      .filter((plan) => plan.status === "active" && plan.amountPaise > 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    if (!choices.length) return NO_LISTING_CREDITS_REPLY;
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const packageLines = choices.map((plan) => {
+      const token = createPurchaseLinkToken({
+        workspaceId,
+        planId: plan.id,
+        expiresAt,
+      });
+      return `- ${plan.name}: ${formatPlanPrice(plan)}\n${getPublicBaseUrl()}/pricing?purchase=${token}`;
+    });
+
+    return `${NO_LISTING_CREDITS_REPLY}\n\nChoose a package:\n${packageLines.join("\n\n")}`;
   }
 }
 
