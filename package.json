@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "auth:seed": "tsx scripts/seed-auth-users.ts",
+    "billing:migrate": "tsx scripts/migrate-listing-credits.ts",
     "firestore:seed": "tsx scripts/seed-firestore.ts",
     "start": "next start",
     "lint": "eslint",
