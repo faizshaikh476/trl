@@ -100,11 +100,10 @@ export function buildListingCreditMigration(
 
     const entryId = `migration:existing-listing:${listing.id}`;
     const hasLedger = input.ledgerEntries.has(ledgerKey(listing.workspaceId, entryId));
-    const workspace = input.workspaces.find((candidate) => candidate.id === listing.workspaceId);
-    const plan = workspace ? plansById.get(workspace.planId) : normalizedPlans[0];
-    const visibilityDays = plan?.listingVisibilityDays ?? DEFAULT_LISTING_VISIBILITY_DAYS;
     const basis = parseTimestamp(listing.publishedAt) ?? parseTimestamp(listing.updatedAt);
-    const migratedExpiry = basis ? addDays(basis, visibilityDays).toISOString() : null;
+    const migratedExpiry = basis
+      ? addDays(basis, DEFAULT_LISTING_VISIBILITY_DAYS).toISOString()
+      : null;
     const expiresAt = maxTimestamp(listing.expiresAt, migratedExpiry);
     const patch: Partial<Listing> = {};
 

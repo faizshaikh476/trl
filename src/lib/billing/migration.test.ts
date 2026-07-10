@@ -88,7 +88,7 @@ describe("listing credit migration", () => {
   it("creates deterministic listing consumption ledger entries and expiry from publishedAt", () => {
     const result = buildListingCreditMigration({
       now: "2026-07-10T10:00:00.000Z",
-      plans: [planFixture({ id: "starter", listingVisibilityDays: 60 })],
+      plans: [planFixture({ id: "starter", listingVisibilityDays: 30 })],
       workspaces: [workspaceFixture({ id: "workspace_1", planId: "starter" })],
       wallets: new Map(),
       listings: [
