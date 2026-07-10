@@ -3,6 +3,7 @@ import "server-only";
 import type { Firestore } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
+import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
 import type { Listing } from "@/types/domain";
 
 export interface ExpireListingInput {
@@ -22,7 +23,10 @@ export interface ListingExpiryResult {
 }
 
 export class ListingExpiryService {
-  constructor(private readonly store: ListingExpiryStore = new FirestoreListingExpiryStore()) {}
+  constructor(
+    private readonly store: ListingExpiryStore = new FirestoreListingExpiryStore(),
+    private readonly revalidateListing: (listing: Pick<Listing, "id" | "slug">) => void = revalidatePublicListing,
+  ) {}
 
   async expireDueListings(now: Date): Promise<ListingExpiryResult> {
     const timestamp = now.toISOString();
@@ -35,7 +39,10 @@ export class ListingExpiryService {
         listingId: listing.id,
         now: timestamp,
       });
-      if (expired) expiredListings.push(expired);
+      if (expired) {
+        expiredListings.push(expired);
+        this.revalidateListing(expired);
+      }
     }
 
     return {

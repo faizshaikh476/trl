@@ -33,7 +33,10 @@ describe("ListingExpiryService", () => {
         expiresAt: "2026-07-09T10:00:00.000Z",
       }),
     ]);
-    const service = new ListingExpiryService(store);
+    const revalidatedListings: Array<Pick<Listing, "id" | "slug">> = [];
+    const service = new ListingExpiryService(store, (listing) => {
+      revalidatedListings.push({ id: listing.id, slug: listing.slug });
+    });
 
     const result = await service.expireDueListings(now);
 
@@ -48,6 +51,7 @@ describe("ListingExpiryService", () => {
     expect(store.savedListing("future_published")?.status).toBe("published");
     expect(store.savedListing("due_unpublished")?.status).toBe("unpublished");
     expect(store.savedListing("already_expired")?.status).toBe("expired");
+    expect(revalidatedListings).toEqual([{ id: "due_published", slug: "garden-flat" }]);
   });
 
   it("is idempotent across repeated expiry runs", async () => {
@@ -59,7 +63,10 @@ describe("ListingExpiryService", () => {
         expiresAt: "2026-07-10T10:00:00.000Z",
       }),
     ]);
-    const service = new ListingExpiryService(store);
+    const revalidatedListings: Array<Pick<Listing, "id" | "slug">> = [];
+    const service = new ListingExpiryService(store, (listing) => {
+      revalidatedListings.push({ id: listing.id, slug: listing.slug });
+    });
 
     await expect(service.expireDueListings(now)).resolves.toMatchObject({
       expiredCount: 1,
@@ -68,6 +75,7 @@ describe("ListingExpiryService", () => {
       expiredCount: 0,
     });
     expect(store.savedListing("due_published")?.status).toBe("expired");
+    expect(revalidatedListings).toEqual([{ id: "due_published", slug: "garden-flat" }]);
   });
 });
 
