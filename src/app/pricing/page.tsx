@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { RazorpayCheckout } from "@/components/billing/razorpay-checkout";
 import { PricingSection } from "@/components/public/pricing-section";
 import { Button } from "@/components/ui/button";
-import { billingService } from "@/lib/billing/billing-service";
+import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
 import { getAuthenticatedUser } from "@/lib/auth/current-user";
 
 export const dynamic = "force-dynamic";
@@ -51,12 +52,11 @@ export default async function PricingPage({
         </div>
 
         {selectedPlan ? (
-          <div className="mt-7 rounded-lg border border-emerald-200 bg-white p-4 text-sm text-zinc-700 shadow-sm">
-            <p>
-              <span className="font-semibold text-zinc-950">{selectedPlan.name}</span> is selected.
-              Checkout will be connected here in the next billing task.
-            </p>
-          </div>
+          <RazorpayCheckout
+            planId={selectedPlan.id}
+            planLabel={selectedPlan.name}
+            priceLabel={formatPlanPrice(selectedPlan)}
+          />
         ) : selectedPlanId ? (
           <div className="mt-7 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             That package is not currently available. Choose an active package below.

@@ -38,7 +38,7 @@ export function PricingSection({
           {activePlans.map((plan) => {
             const isSelected = plan.id === selectedPlanId;
             const planHref = isSelected
-              ? `/pricing/checkout?plan=${encodeURIComponent(plan.id)}`
+              ? `/pricing?plan=${encodeURIComponent(plan.id)}#checkout`
               : `/pricing?plan=${encodeURIComponent(plan.id)}`;
 
             return (
