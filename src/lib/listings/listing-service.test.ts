@@ -52,6 +52,50 @@ describe("ListingService", () => {
     expect(duplicate.createdBy).toBe("user_owner_demo");
   });
 
+  it("does not return expired listings for public slug lookup", async () => {
+    const service = new ListingService(new DemoListingRepository());
+    const listing = await service.createManual("workspace_rare_address", "user_owner_demo", {
+      title: "Expired Public Lookup Test Listing",
+      transactionType: "sale",
+      propertyType: "apartment",
+      location: "Koregaon Park, Pune",
+      city: "Pune",
+      locality: "Koregaon Park",
+      societyName: "Public Lookup Test",
+      googleMapsUrl: "",
+      price: 10000000,
+      deposit: null,
+      brokerage: "2%",
+      taxes: "extra",
+      bhk: 2,
+      bedrooms: 2,
+      bathrooms: 2,
+      carpetArea: 900,
+      builtUpArea: null,
+      plotArea: null,
+      openArea: null,
+      furnishedStatus: "semi-furnished",
+      parkingCount: 1,
+      floor: "4",
+      totalFloors: 10,
+      availability: "Immediate",
+      preferredTenant: null,
+      descriptionShort: "Expired public lookup listing.",
+      descriptionLong: "Temporary listing created only to verify expired public lookup behavior.",
+      highlightsText: ["Public lookup", "Expired listing"],
+      amenitiesText: ["Lift"],
+      seoTitle: "Expired Public Lookup Listing",
+      seoDescription: "Expired public lookup listing.",
+      whatsappShareText: "Expired public lookup listing.",
+      instagramCaption: "Expired public lookup listing.",
+    });
+
+    await service.updateStatus(listing.id, "expired");
+
+    await expect(service.findShareableBySlug(listing.slug)).resolves.toBeNull();
+    await service.deleteInWorkspace(listing.workspaceId, listing.id);
+  });
+
   it("hard deletes a listing inside its workspace", async () => {
     const service = new ListingService(new DemoListingRepository());
     const duplicate = await service.createManual("workspace_rare_address", "user_owner_demo", {

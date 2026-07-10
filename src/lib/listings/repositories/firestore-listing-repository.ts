@@ -47,36 +47,7 @@ export class FirestoreListingRepository implements ListingRepository {
   }
 
   async findShareableBySlug(slug: string) {
-    const published = await this.findPublishedBySlug(slug);
-    if (published) return published;
-
-    let snapshot;
-    try {
-      snapshot = await getAdminDb()
-        .collectionGroup("listings")
-        .where("slug", "==", slug)
-        .limit(1)
-        .get();
-    } catch (error) {
-      if (!isMissingFirestoreIndexError(error)) throw error;
-      return this.findShareableBySlugWithoutIndex(slug);
-    }
-    const doc = snapshot.docs[0];
-    if (!doc) return null;
-
-    const listing = { id: doc.id, ...doc.data() } as Listing;
-    if (listing.status === "archived" || listing.status === "rejected") return null;
-    return listing;
-  }
-
-  private async findShareableBySlugWithoutIndex(slug: string) {
-    const snapshot = await getAdminDb().collectionGroup("listings").get();
-    const doc = snapshot.docs.find((item) => item.data().slug === slug);
-    if (!doc) return null;
-
-    const listing = { id: doc.id, ...doc.data() } as Listing;
-    if (listing.status === "archived" || listing.status === "rejected") return null;
-    return listing;
+    return this.findPublishedBySlug(slug);
   }
 
   async findById(id: string) {
@@ -378,14 +349,6 @@ function manualInputToListingPatch(input: Partial<ManualListingInput>): Partial<
   delete (patch as { highlightsText?: unknown }).highlightsText;
   delete (patch as { amenitiesText?: unknown }).amenitiesText;
   return patch;
-}
-
-function isMissingFirestoreIndexError(error: unknown) {
-  if (!(error instanceof Error)) return false;
-  return (
-    error.message.includes("requires a COLLECTION_GROUP_ASC index") ||
-    error.message.includes("requires an index")
-  );
 }
 
 function calculateManualQuality(input: ManualListingInput) {

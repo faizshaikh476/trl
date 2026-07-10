@@ -160,11 +160,19 @@ export async function reactivateListingAction(listingId: string) {
     throw error;
   }
 
-  const updated = await listingService.updateStatusInWorkspace(
-    listing.workspaceId,
-    listingId,
-    "published",
-  );
+  let updated;
+  try {
+    updated = await listingService.updateStatusInWorkspace(
+      listing.workspaceId,
+      listingId,
+      "published",
+    );
+  } catch (error) {
+    if (error instanceof NoListingCreditsError) {
+      redirect(`/dashboard/listings/${listingId}?error=reactivation-wallet`);
+    }
+    throw error;
+  }
   revalidatePublicListing(updated);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");

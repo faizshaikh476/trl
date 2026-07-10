@@ -28,12 +28,7 @@ export class DemoListingRepository implements ListingRepository {
   }
 
   async findShareableBySlug(slug: string) {
-    return (
-      listings.find(
-        (listing) =>
-          listing.slug === slug && listing.status !== "archived" && listing.status !== "rejected",
-      ) ?? null
-    );
+    return this.findPublishedBySlug(slug);
   }
 
   async findById(id: string) {
