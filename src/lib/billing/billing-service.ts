@@ -30,6 +30,9 @@ export type PlanUsage = {
   isAtLimit: boolean;
 };
 
+export const LISTING_CREDIT_VALIDITY_DAYS = 30;
+export const LISTING_VISIBILITY_DAYS = 60;
+
 export const defaultPlans: Plan[] = [
   makeDefaultPlan("starter", "Starter", "Starter listing credit package", 199900, 25, false, 10),
   makeDefaultPlan("pro", "Pro", "Pro listing credit package", 499900, 100, true, 20),
@@ -85,7 +88,7 @@ export class BillingService {
       amountPaise: input.amountPaise,
       currency: input.currency,
       listingCredits: input.listingCredits,
-      creditValidityDays: input.creditValidityDays,
+      creditValidityDays: LISTING_CREDIT_VALIDITY_DAYS,
       listingVisibilityDays: input.listingVisibilityDays,
       featured: input.featured,
       priceLabel: input.priceLabel,
@@ -200,16 +203,15 @@ export function parsePlanInput(formData: FormData): PlanInput {
   const hasNewAmountPaise = hasFormValue(formData, "amountPaise");
   const hasNewListingCredits = hasFormValue(formData, "listingCredits");
   const hasNewCurrency = hasFormValue(formData, "currency");
-  const hasNewCreditValidity = hasFormValue(formData, "creditValidityDays");
   const hasNewListingVisibility = hasFormValue(formData, "listingVisibilityDays");
   const hasNewFeatured = hasFormValue(formData, "featured");
   const hasAnyNewPricingField =
     hasNewAmountPaise ||
     hasNewListingCredits ||
     hasNewCurrency ||
-    hasNewCreditValidity ||
     hasNewListingVisibility ||
     hasNewFeatured;
+  assertFixedCreditValidity(formData);
 
   const legacyPriceLabel = optionalString(formData, "priceLabel");
   const legacyActiveListingLimit = optionalPositiveWholeNumber(formData, "activeListingLimit");
@@ -224,20 +226,14 @@ export function parsePlanInput(formData: FormData): PlanInput {
         "Listing credits must be a positive whole number.",
       )
     : requiredLegacyListingCredits(legacyActiveListingLimit);
-  const creditValidityDays = hasNewCreditValidity
-    ? positiveWholeNumber(
-        formData,
-        "creditValidityDays",
-        "Credit validity must be a positive whole number of days.",
-      )
-    : 30;
+  const creditValidityDays = LISTING_CREDIT_VALIDITY_DAYS;
   const listingVisibilityDays = hasNewListingVisibility
     ? positiveWholeNumber(
         formData,
         "listingVisibilityDays",
         "Listing visibility must be a positive whole number of days.",
       )
-    : 60;
+    : LISTING_VISIBILITY_DAYS;
   const featured = hasNewFeatured ? booleanInput(formData.get("featured")) : false;
   const sortOrder = Number(formData.get("sortOrder") ?? 100);
   const status = String(formData.get("status") ?? "active");
@@ -311,6 +307,14 @@ function positiveWholeNumber(formData: FormData, key: string, errorMessage: stri
   return value;
 }
 
+function assertFixedCreditValidity(formData: FormData) {
+  if (!hasFormValue(formData, "creditValidityDays")) return;
+  const value = Number(formData.get("creditValidityDays"));
+  if (value !== LISTING_CREDIT_VALIDITY_DAYS) {
+    throw new Error(`Credit validity is fixed at ${LISTING_CREDIT_VALIDITY_DAYS} days.`);
+  }
+}
+
 function wholeNumberAmountPaise(formData: FormData, key: string, allowZero: boolean) {
   const value = Number(formData.get(key));
   if (!Number.isInteger(value)) throw new Error("Amount must be a positive whole number.");
@@ -378,8 +382,8 @@ function normalizePlanRecord(plan: Record<string, unknown>) {
     amountPaise,
     currency: "INR" as const,
     listingCredits,
-    creditValidityDays: readPositiveWholeNumber(plan.creditValidityDays) ?? 30,
-    listingVisibilityDays: readPositiveWholeNumber(plan.listingVisibilityDays) ?? 60,
+    creditValidityDays: LISTING_CREDIT_VALIDITY_DAYS,
+    listingVisibilityDays: readPositiveWholeNumber(plan.listingVisibilityDays) ?? LISTING_VISIBILITY_DAYS,
     featured: readBoolean(plan.featured),
     priceLabel: readString(plan.priceLabel) ?? formatPlanPrice({ amountPaise, currency: "INR" } as Plan),
     activeListingLimit: listingCredits,
@@ -425,8 +429,8 @@ function makeDefaultPlan(
     description,
     amountPaise,
     listingCredits,
-    creditValidityDays: 30,
-    listingVisibilityDays: 60,
+    creditValidityDays: LISTING_CREDIT_VALIDITY_DAYS,
+    listingVisibilityDays: LISTING_VISIBILITY_DAYS,
     featured,
     status: "active",
     sortOrder,

@@ -4,7 +4,11 @@ import { AdminSectionPage } from "@/components/admin/admin-section-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
-import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
+import {
+  billingService,
+  formatPlanPrice,
+  LISTING_CREDIT_VALIDITY_DAYS,
+} from "@/lib/billing/billing-service";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import { createPlanAction, deletePlanAction, updatePlanAction } from "@/server-actions/billing-actions";
 import type { Plan } from "@/types/domain";
@@ -36,7 +40,7 @@ export default async function AdminSubscriptionsPage() {
         },
         {
           title: "Validity",
-          description: "Package credits and listing visibility are configured per plan.",
+          description: `${LISTING_CREDIT_VALIDITY_DAYS}-day credits. Listing visibility can be adjusted per package.`,
           status: "Pricing",
         },
       ]}
@@ -62,7 +66,7 @@ export default async function AdminSubscriptionsPage() {
             <Field label="Plan name" name="name" placeholder="Growth" required />
             <Field label="Amount in rupees" name="amountRupees" type="text" inputMode="decimal" placeholder="7999" required />
             <Field label="Listing credits" name="listingCredits" type="number" min="1" defaultValue="50" required />
-            <Field label="Credit validity days" name="creditValidityDays" type="number" min="1" defaultValue="30" required />
+            <FixedValidityField />
             <Field label="Listing visibility days" name="listingVisibilityDays" type="number" min="1" defaultValue="60" required />
             <Field label="Sort order" name="sortOrder" type="number" defaultValue="40" required />
             <TextArea label="Description" name="description" placeholder="For growing broker teams" />
@@ -118,7 +122,7 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
               {isAssigned ? <Badge variant="secondary">assigned</Badge> : null}
             </div>
             <p className="mt-1 text-sm text-slate-400">
-              {plan.listingCredits} credits · {formatPlanPrice(plan)} · {plan.creditValidityDays} day wallet
+              {plan.listingCredits} credits · {formatPlanPrice(plan)} · {LISTING_CREDIT_VALIDITY_DAYS} day wallet
             </p>
             {plan.description ? <p className="mt-2 max-w-2xl text-sm text-slate-400">{plan.description}</p> : null}
           </div>
@@ -130,7 +134,7 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
         <Field label="Name" name="name" defaultValue={plan.name} required />
         <Field label="Amount in rupees" name="amountRupees" type="text" inputMode="decimal" defaultValue={paiseToRupees(plan.amountPaise)} required />
         <Field label="Listing credits" name="listingCredits" type="number" min="1" defaultValue={String(plan.listingCredits)} required />
-        <Field label="Credit validity days" name="creditValidityDays" type="number" min="1" defaultValue={String(plan.creditValidityDays)} required />
+        <FixedValidityField />
         <Field label="Listing visibility days" name="listingVisibilityDays" type="number" min="1" defaultValue={String(plan.listingVisibilityDays)} required />
         <Field label="Order" name="sortOrder" type="number" defaultValue={String(plan.sortOrder)} required />
         <TextArea label="Description" name="description" defaultValue={plan.description} />
@@ -175,6 +179,18 @@ function PlanEditor({ plan, isAssigned }: { plan: Plan; isAssigned: boolean }) {
         </details>
       ) : null}
     </section>
+  );
+}
+
+function FixedValidityField() {
+  return (
+    <div className="grid min-w-0 gap-1 text-sm font-medium text-slate-300">
+      Credit validity
+      <div className="flex h-10 min-w-0 items-center rounded-md border border-white/10 bg-slate-950 px-3 text-sm text-slate-200">
+        {LISTING_CREDIT_VALIDITY_DAYS} days
+      </div>
+      <input type="hidden" name="creditValidityDays" value={String(LISTING_CREDIT_VALIDITY_DAYS)} />
+    </div>
   );
 }
 

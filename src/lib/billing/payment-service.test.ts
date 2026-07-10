@@ -28,6 +28,7 @@ class InMemoryPaymentStore implements PaymentStore {
 
   async setPurchaseProviderOrderId(purchaseId: string, providerOrderId: string, updatedAt: string) {
     const purchase = this.requirePurchase(purchaseId);
+    if (purchase.providerOrderId) return structuredClone(purchase);
     purchase.providerOrderId = providerOrderId;
     purchase.updatedAt = updatedAt;
     this.purchases.set(purchaseId, structuredClone(purchase));
@@ -160,7 +161,7 @@ describe("PaymentService", () => {
     amountPaise: 799900,
     currency: "INR",
     listingCredits: 50,
-    creditValidityDays: 30,
+    creditValidityDays: 45,
     listingVisibilityDays: 60,
     featured: true,
     status: "active",
@@ -276,6 +277,44 @@ describe("PaymentService", () => {
 
     expect(duplicate).toEqual(first);
     expect(orders.calls).toHaveLength(1);
+  });
+
+  it("does not overwrite a purchase provider order when duplicate order creation races", async () => {
+    const stored = await store.createPurchase(
+      {
+        id: "purchase_race",
+        workspaceId: "workspace_1",
+        planId: "growth",
+        quantity: 50,
+        validityDays: 30,
+        amountPaise: 799900,
+        currency: "INR",
+        status: "pending",
+        provider: "razorpay",
+        providerOrderId: null,
+        providerPaymentId: null,
+        providerRefundId: null,
+        providerEventIds: [],
+        creditGrantLedgerEntryId: null,
+        creditsGrantedAt: null,
+        failureReason: null,
+        paidAt: null,
+        refundedAt: null,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      "race-key",
+    );
+
+    await store.setPurchaseProviderOrderId(stored.id, "order_first", now.toISOString());
+    const duplicate = await store.setPurchaseProviderOrderId(
+      stored.id,
+      "order_second",
+      "2026-07-10T12:00:01.000Z",
+    );
+
+    expect(duplicate.providerOrderId).toBe("order_first");
+    await expect(store.findPurchaseByProviderOrderId("order_second")).resolves.toBeNull();
   });
 
   it("verifies checkout HMAC over order and payment ids before granting credits once", async () => {

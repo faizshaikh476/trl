@@ -238,8 +238,7 @@ function normalizePlan(plan: Plan, now: string): Plan {
     amountPaise,
     currency: "INR",
     listingCredits,
-    creditValidityDays:
-      readWholeNumber(plan.creditValidityDays, 1) ?? DEFAULT_CREDIT_VALIDITY_DAYS,
+    creditValidityDays: DEFAULT_CREDIT_VALIDITY_DAYS,
     listingVisibilityDays:
       readWholeNumber(plan.listingVisibilityDays, 1) ?? DEFAULT_LISTING_VISIBILITY_DAYS,
     featured: plan.featured === true,

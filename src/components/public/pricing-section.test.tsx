@@ -31,7 +31,7 @@ describe("PricingSection", () => {
     expect(within(growth!).getByText("Selected package")).toBeInTheDocument();
     expect(within(growth!).getByRole("link", { name: "Continue with Growth" })).toHaveAttribute(
       "href",
-      "/pricing/checkout?plan=growth",
+      "/pricing?plan=growth#checkout",
     );
   });
 });

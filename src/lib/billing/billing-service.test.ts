@@ -134,6 +134,20 @@ describe("parsePlanInput", () => {
     });
   });
 
+  it("rejects custom credit validity because credit packages are fixed to 30 days", () => {
+    const formData = new FormData();
+    formData.set("name", "Growth");
+    formData.set("amountPaise", "799900");
+    formData.set("currency", "INR");
+    formData.set("listingCredits", "50");
+    formData.set("creditValidityDays", "45");
+    formData.set("listingVisibilityDays", "60");
+    formData.set("status", "active");
+    formData.set("sortOrder", "20");
+
+    expect(() => parsePlanInput(formData)).toThrow("Credit validity is fixed at 30 days.");
+  });
+
   it("accepts the current legacy admin form fields", () => {
     const formData = new FormData();
     formData.set("name", "Growth");

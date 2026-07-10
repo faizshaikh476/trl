@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
-import { billingService } from "@/lib/billing/billing-service";
+import { billingService, LISTING_CREDIT_VALIDITY_DAYS } from "@/lib/billing/billing-service";
 import { creditWalletService } from "@/lib/billing/credit-wallet-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
@@ -110,7 +110,7 @@ export class PaymentService {
       workspaceId: input.workspaceId,
       planId: plan.id,
       quantity: plan.listingCredits,
-      validityDays: plan.creditValidityDays,
+      validityDays: LISTING_CREDIT_VALIDITY_DAYS,
       amountPaise: plan.amountPaise,
       currency: plan.currency,
       status: "pending",
@@ -329,10 +329,16 @@ export class FirestorePaymentStore implements PaymentStore {
     providerOrderId: string,
     updatedAt: string,
   ) {
-    const ref = this.db.doc(firestorePaths.purchase(purchaseId));
-    await ref.update({ providerOrderId, updatedAt });
-    const snapshot = await ref.get();
-    return snapshot.data() as CreditPurchase;
+    return this.db.runTransaction(async (transaction) => {
+      const ref = this.db.doc(firestorePaths.purchase(purchaseId));
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new Error(`Missing purchase ${purchaseId}`);
+      const purchase = snapshot.data() as CreditPurchase;
+      if (purchase.providerOrderId) return purchase;
+      const updated = { ...purchase, providerOrderId, updatedAt };
+      transaction.set(ref, updated);
+      return updated;
+    });
   }
 
   async findPurchaseById(purchaseId: string) {
@@ -449,7 +455,9 @@ class FirestorePaymentTransaction implements PaymentStore {
     const ref = this.db.doc(firestorePaths.purchase(purchaseId));
     const snapshot = await this.transaction.get(ref);
     if (!snapshot.exists) throw new Error(`Missing purchase ${purchaseId}`);
-    const purchase = { ...(snapshot.data() as CreditPurchase), providerOrderId, updatedAt };
+    const current = snapshot.data() as CreditPurchase;
+    if (current.providerOrderId) return current;
+    const purchase = { ...current, providerOrderId, updatedAt };
     this.transaction.set(ref, purchase);
     return purchase;
   }
@@ -649,7 +657,7 @@ function assertPurchasablePlan(plan: Plan) {
   if (plan.status !== "active") throw new Error("Selected package is not active.");
   if (plan.amountPaise <= 0) throw new Error("Only paid credit packages can be purchased.");
   if (plan.currency !== "INR") throw new Error("Only INR packages can be purchased.");
-  if (plan.listingCredits <= 0 || plan.creditValidityDays <= 0) {
+  if (plan.listingCredits <= 0 || LISTING_CREDIT_VALIDITY_DAYS <= 0) {
     throw new Error("Selected package is not configured for credit purchases.");
   }
 }
