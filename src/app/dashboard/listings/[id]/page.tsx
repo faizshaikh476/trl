@@ -7,6 +7,7 @@ import {
   Eye,
   IndianRupee,
   MapPin,
+  RotateCcw,
   Save,
   Sparkles,
   WandSparkles,
@@ -21,7 +22,10 @@ import { listingService } from "@/lib/listings/listing-service";
 import { mediaService } from "@/lib/media/media-service";
 import { PERMISSIONS } from "@/lib/rbac/permissions";
 import { requireWorkspacePermission } from "@/lib/rbac/require-permission";
-import { updateManualListingAction } from "@/server-actions/listing-actions";
+import {
+  reactivateListingAction,
+  updateManualListingAction,
+} from "@/server-actions/listing-actions";
 import type { Listing } from "@/types/domain";
 
 const EDIT_FORM_ID = "listing-studio-form";
@@ -56,6 +60,22 @@ export default async function EditListingPage({
             </AlertDescription>
           </Alert>
         ) : null}
+        {query.error === "reactivation-wallet" ? (
+          <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+            <AlertTitle>Active listing wallet required</AlertTitle>
+            <AlertDescription className="text-amber-800">
+              Buy a listing credit package to reactivate this expired listing.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {listing.status === "expired" ? (
+          <Alert className="border-emerald-200 bg-emerald-50 text-emerald-950">
+            <AlertTitle>This listing has expired</AlertTitle>
+            <AlertDescription className="text-emerald-800">
+              Reactivate it to publish the same saved listing for another visibility window.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button asChild variant="ghost" size="sm" className="text-stone-600 hover:bg-stone-100 hover:text-stone-950">
@@ -72,6 +92,14 @@ export default async function EditListingPage({
                   Preview
                 </Link>
               </Button>
+            ) : null}
+            {listing.status === "expired" ? (
+              <form action={reactivateListingAction.bind(null, listing.id)}>
+                <Button type="submit" className="bg-emerald-600 text-white hover:bg-emerald-700">
+                  <RotateCcw className="size-4" />
+                  Reactivate
+                </Button>
+              </form>
             ) : null}
             <Button type="submit" form={EDIT_FORM_ID} className="bg-stone-950 text-white hover:bg-stone-800">
               <Save className="size-4" />

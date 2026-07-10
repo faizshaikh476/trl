@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser, getCurrentAdmin, getCurrentUser } from "@/lib/auth/current-user";
+import { creditWalletService, NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
 import { billingService, ListingPlanLimitError } from "@/lib/billing/billing-service";
 import { manualListingSchema } from "@/lib/listings/listing.schema";
 import { listingService } from "@/lib/listings/listing-service";
@@ -134,6 +135,40 @@ export async function updateListingStatusAction(listingId: string, status: Listi
   revalidatePublicListing(updated);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
+  revalidatePath("/admin/listings");
+  revalidatePath(`/admin/listings/${listingId}`);
+}
+
+export async function reactivateListingAction(listingId: string) {
+  const user = await getListingMutationUser();
+  const listing = await getListingForMutation(listingId, user.workspaceId ?? undefined);
+  if (!listing) throw new Error("Listing not found");
+  requireWorkspacePermission(user, listing.workspaceId, PERMISSIONS.LISTINGS_PUBLISH);
+  if (listing.status !== "expired") {
+    throw new Error("Only expired listings can be reactivated.");
+  }
+  if (!listing.creditLedgerEntryId && !listing.creditConsumedAt) {
+    throw new Error("Only previously published listings can be reactivated.");
+  }
+
+  try {
+    await creditWalletService.assertCanReactivate(listing.workspaceId);
+  } catch (error) {
+    if (error instanceof NoListingCreditsError) {
+      redirect(`/dashboard/listings/${listingId}?error=reactivation-wallet`);
+    }
+    throw error;
+  }
+
+  const updated = await listingService.updateStatusInWorkspace(
+    listing.workspaceId,
+    listingId,
+    "published",
+  );
+  revalidatePublicListing(updated);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/listings");
+  revalidatePath(`/dashboard/listings/${listingId}`);
   revalidatePath("/admin/listings");
   revalidatePath(`/admin/listings/${listingId}`);
 }
