@@ -103,6 +103,19 @@ class InMemoryPaymentStore implements PaymentStore {
     return structuredClone(purchase);
   }
 
+  async markCreditsGranted(input: {
+    purchaseId: string;
+    creditGrantLedgerEntryId: string;
+    creditsGrantedAt: string;
+  }) {
+    const purchase = this.requirePurchase(input.purchaseId);
+    purchase.creditGrantLedgerEntryId = input.creditGrantLedgerEntryId;
+    purchase.creditsGrantedAt = input.creditsGrantedAt;
+    purchase.updatedAt = input.creditsGrantedAt;
+    this.purchases.set(purchase.id, structuredClone(purchase));
+    return structuredClone(purchase);
+  }
+
   async hasProviderEvent(providerEventId: string) {
     return this.providerEvents.has(providerEventId);
   }
@@ -159,6 +172,7 @@ describe("PaymentService", () => {
   let now: Date;
   let store: InMemoryPaymentStore;
   let orders: FakeRazorpayOrders;
+  let grantFailuresRemaining: number;
   let grants: Array<{
     workspaceId: string;
     quantity: number;
@@ -172,6 +186,7 @@ describe("PaymentService", () => {
     now = new Date("2026-07-10T12:00:00.000Z");
     store = new InMemoryPaymentStore();
     orders = new FakeRazorpayOrders();
+    grantFailuresRemaining = 0;
     grants = [];
     service = new PaymentService({
       store,
@@ -183,6 +198,10 @@ describe("PaymentService", () => {
       },
       wallet: {
         grantCredits: async (input) => {
+          if (grantFailuresRemaining > 0) {
+            grantFailuresRemaining -= 1;
+            throw new Error("simulated grant failure");
+          }
           grants.push(input);
           return {
             id: `grant:purchase:${input.sourceId}`,
@@ -304,6 +323,55 @@ describe("PaymentService", () => {
     ]);
   });
 
+  it("retries checkout credit grants when a previous verification marked the purchase paid before grant failure", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "checkout-retry-grant",
+    });
+    const signature = checkoutSignature("order_1", "pay_retry_1");
+    grantFailuresRemaining = 1;
+
+    await expect(
+      service.verifyCheckout({
+        razorpay_order_id: "order_1",
+        razorpay_payment_id: "pay_retry_1",
+        razorpay_signature: signature,
+      }),
+    ).rejects.toThrow("simulated grant failure");
+
+    expect(await store.findPurchaseById(order.purchaseId)).toMatchObject({
+      status: "paid",
+      providerPaymentId: "pay_retry_1",
+    });
+    expect(grants).toHaveLength(0);
+
+    await expect(
+      service.verifyCheckout({
+        razorpay_order_id: "order_1",
+        razorpay_payment_id: "pay_retry_1",
+        razorpay_signature: signature,
+      }),
+    ).resolves.toMatchObject({ id: order.purchaseId, status: "paid" });
+
+    expect(grants).toEqual([
+      {
+        workspaceId: "workspace_1",
+        quantity: 50,
+        validityDays: 30,
+        sourceId: order.purchaseId,
+        sourceType: "purchase",
+      },
+    ]);
+
+    await service.verifyCheckout({
+      razorpay_order_id: "order_1",
+      razorpay_payment_id: "pay_retry_1",
+      razorpay_signature: signature,
+    });
+    expect(grants).toHaveLength(1);
+  });
+
   it("processes captured-payment webhooks from the raw body and ignores duplicate events", async () => {
     const order = await service.createOrder({
       workspaceId: "workspace_1",
@@ -334,6 +402,64 @@ describe("PaymentService", () => {
       status: "paid",
       providerPaymentId: "pay_2",
       providerEventIds: ["evt_captured_1"],
+    });
+    expect(grants).toHaveLength(1);
+  });
+
+  it("retries captured webhooks when a previous attempt marked paid before grant failure", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "webhook-retry-grant",
+    });
+    const rawBody = JSON.stringify({
+      id: "evt_captured_retry",
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: {
+            id: "pay_retry_2",
+            order_id: order.providerOrderId,
+            captured: true,
+          },
+        },
+      },
+    });
+    const signature = webhookSignature(rawBody);
+    grantFailuresRemaining = 1;
+
+    await expect(service.processWebhook(rawBody, signature)).rejects.toThrow(
+      "simulated grant failure",
+    );
+
+    expect(await store.findPurchaseById(order.purchaseId)).toMatchObject({
+      status: "paid",
+      providerPaymentId: "pay_retry_2",
+      providerEventIds: [],
+    });
+    expect(grants).toHaveLength(0);
+
+    await expect(service.processWebhook(rawBody, signature)).resolves.toEqual({
+      processed: true,
+      duplicate: false,
+    });
+
+    expect(grants).toEqual([
+      {
+        workspaceId: "workspace_1",
+        quantity: 50,
+        validityDays: 30,
+        sourceId: order.purchaseId,
+        sourceType: "purchase",
+      },
+    ]);
+    expect(await store.findPurchaseById(order.purchaseId)).toMatchObject({
+      providerEventIds: ["evt_captured_retry"],
+    });
+
+    await expect(service.processWebhook(rawBody, signature)).resolves.toEqual({
+      processed: false,
+      duplicate: true,
     });
     expect(grants).toHaveLength(1);
   });

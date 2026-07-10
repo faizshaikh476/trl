@@ -111,6 +111,8 @@ export interface CreditPurchase {
   providerPaymentId: string | null;
   providerRefundId: string | null;
   providerEventIds: string[];
+  creditGrantLedgerEntryId: string | null;
+  creditsGrantedAt: TimestampString | null;
   failureReason: string | null;
   paidAt: TimestampString | null;
   refundedAt: TimestampString | null;

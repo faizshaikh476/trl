@@ -45,6 +45,11 @@ export interface PaymentStore {
     providerEventId?: string | null;
     refundedAt: string;
   }): Promise<CreditPurchase>;
+  markCreditsGranted(input: {
+    purchaseId: string;
+    creditGrantLedgerEntryId: string;
+    creditsGrantedAt: string;
+  }): Promise<CreditPurchase>;
   hasProviderEvent(providerEventId: string): Promise<boolean>;
   recordProviderEvent(providerEventId: string): Promise<boolean>;
 }
@@ -114,6 +119,8 @@ export class PaymentService {
       providerPaymentId: null,
       providerRefundId: null,
       providerEventIds: [],
+      creditGrantLedgerEntryId: null,
+      creditsGrantedAt: null,
       failureReason: null,
       paidAt: null,
       refundedAt: null,
@@ -170,8 +177,7 @@ export class PaymentService {
       });
     });
 
-    if (result.changed) await this.grantPurchaseCredits(result.purchase);
-    return result.purchase;
+    return this.ensurePurchaseCreditsGranted(result.purchase);
   }
 
   async processWebhook(rawBody: string, signature: string | null) {
@@ -203,26 +209,33 @@ export class PaymentService {
     const result = await this.dependencies.store.runTransaction(async (transaction) => {
       const purchase = await transaction.findPurchaseByProviderOrderId(orderId);
       if (!purchase) return { processed: false, duplicate: false, purchase: null };
-      if (purchase.providerEventIds.includes(event.id)) {
+      if (purchase.providerEventIds.includes(event.id) && purchase.creditGrantLedgerEntryId) {
         return { processed: false, duplicate: true, purchase };
       }
 
       const paid = await transaction.markPaid({
         purchaseId: purchase.id,
         providerPaymentId: paymentId,
-        providerEventId: event.id,
         paidAt: this.now().toISOString(),
       });
       return {
         processed: true,
         duplicate: false,
         purchase: paid.purchase,
-        changed: paid.changed,
+        eventAlreadyRecorded: purchase.providerEventIds.includes(event.id),
       };
     });
 
-    if (result.processed && result.changed && result.purchase) {
-      await this.grantPurchaseCredits(result.purchase);
+    if (result.processed && result.purchase) {
+      const purchase = await this.ensurePurchaseCreditsGranted(result.purchase);
+      if (!result.eventAlreadyRecorded) {
+        await this.dependencies.store.markPaid({
+          purchaseId: purchase.id,
+          providerPaymentId: paymentId,
+          providerEventId: event.id,
+          paidAt: purchase.paidAt ?? this.now().toISOString(),
+        });
+      }
     }
     return { processed: result.processed, duplicate: result.duplicate };
   }
@@ -280,6 +293,16 @@ export class PaymentService {
       validityDays: purchase.validityDays,
       sourceId: purchase.id,
       sourceType: "purchase",
+    });
+  }
+
+  private async ensurePurchaseCreditsGranted(purchase: CreditPurchase) {
+    if (purchase.creditGrantLedgerEntryId) return purchase;
+    const entry = await this.grantPurchaseCredits(purchase);
+    return this.dependencies.store.markCreditsGranted({
+      purchaseId: purchase.id,
+      creditGrantLedgerEntryId: entry.id,
+      creditsGrantedAt: this.now().toISOString(),
     });
   }
 }
@@ -358,6 +381,22 @@ export class FirestorePaymentStore implements PaymentStore {
     return markRefundedRecord(await this.requirePurchase(input.purchaseId), input, async (purchase) => {
       await this.db.doc(firestorePaths.purchase(purchase.id)).set(purchase);
     });
+  }
+
+  async markCreditsGranted(input: {
+    purchaseId: string;
+    creditGrantLedgerEntryId: string;
+    creditsGrantedAt: string;
+  }) {
+    const purchase = await this.requirePurchase(input.purchaseId);
+    const updated = {
+      ...purchase,
+      creditGrantLedgerEntryId: input.creditGrantLedgerEntryId,
+      creditsGrantedAt: input.creditsGrantedAt,
+      updatedAt: input.creditsGrantedAt,
+    };
+    await this.db.doc(firestorePaths.purchase(updated.id)).set(updated);
+    return updated;
   }
 
   async hasProviderEvent(providerEventId: string) {
@@ -467,6 +506,21 @@ class FirestorePaymentTransaction implements PaymentStore {
       this.transaction.set(this.db.doc(firestorePaths.purchase(purchase.id)), purchase);
       return Promise.resolve();
     });
+  }
+
+  async markCreditsGranted(input: {
+    purchaseId: string;
+    creditGrantLedgerEntryId: string;
+    creditsGrantedAt: string;
+  }) {
+    const purchase = {
+      ...(await this.requirePurchase(input.purchaseId)),
+      creditGrantLedgerEntryId: input.creditGrantLedgerEntryId,
+      creditsGrantedAt: input.creditsGrantedAt,
+      updatedAt: input.creditsGrantedAt,
+    };
+    this.transaction.set(this.db.doc(firestorePaths.purchase(purchase.id)), purchase);
+    return purchase;
   }
 
   async hasProviderEvent(providerEventId: string) {
