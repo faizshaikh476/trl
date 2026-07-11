@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Clock3, Eye } from "lucide-react";
+import { RazorpayCheckout } from "@/components/billing/razorpay-checkout";
 import { Button } from "@/components/ui/button";
 import { formatPlanPrice } from "@/lib/billing/billing-service";
 import { cn } from "@/lib/utils";
@@ -8,9 +9,11 @@ import type { Plan } from "@/types/domain";
 export function PricingSection({
   plans,
   selectedPlanId,
+  isSignedIn = false,
 }: {
   plans: Plan[];
   selectedPlanId?: string | null;
+  isSignedIn?: boolean;
 }) {
   const activePlans = [...plans]
     .filter((plan) => plan.status === "active")
@@ -25,21 +28,20 @@ export function PricingSection({
           <div className="max-w-2xl">
             <p className="text-sm font-semibold text-emerald-700">Listing credit packages</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Buy credits when you need more live listings.
+              Pick a package and pay in one step.
             </h2>
           </div>
           <p className="max-w-md text-sm leading-6 text-zinc-600">
-            Each package uses the current billing plan data and keeps credits active for the listed
-            validity window.
+            Credits are added to your broker workspace after payment. Published listings stay visible
+            for the package window.
           </p>
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {activePlans.map((plan) => {
             const isSelected = plan.id === selectedPlanId;
-            const planHref = isSelected
-              ? `/pricing?plan=${encodeURIComponent(plan.id)}#checkout`
-              : `/pricing?plan=${encodeURIComponent(plan.id)}`;
+            const signInHref = `/login?next=/pricing?plan=${encodeURIComponent(plan.id)}`;
+            const isPaidPlan = plan.amountPaise > 0;
 
             return (
               <article
@@ -88,18 +90,32 @@ export function PricingSection({
                   />
                 </dl>
 
-                <Button
-                  asChild
-                  className={cn(
-                    "mt-6 w-full bg-emerald-600 text-white hover:bg-emerald-700",
-                    plan.featured && "bg-zinc-950 hover:bg-zinc-800",
-                  )}
-                >
-                  <Link href={planHref}>
-                    {isSelected ? `Continue with ${plan.name}` : `Choose ${plan.name}`}
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
+                {isSignedIn && isPaidPlan ? (
+                  <RazorpayCheckout
+                    planId={plan.id}
+                    planLabel={plan.name}
+                    priceLabel={formatPlanPrice(plan)}
+                    buttonLabel={`Buy ${plan.name}`}
+                    variant="button"
+                    className={cn(
+                      "h-11 w-full",
+                      plan.featured && "bg-zinc-950 hover:bg-zinc-800",
+                    )}
+                  />
+                ) : (
+                  <Button
+                    asChild
+                    className={cn(
+                      "mt-6 h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700",
+                      plan.featured && "bg-zinc-950 hover:bg-zinc-800",
+                    )}
+                  >
+                    <Link href={isSignedIn ? "/dashboard" : signInHref}>
+                      {isSignedIn && !isPaidPlan ? "Go to dashboard" : `Buy ${plan.name}`}
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                )}
               </article>
             );
           })}

@@ -32,9 +32,9 @@ export default async function PricingPage({
     : null;
   let selectedPlan = selectedPlanCandidate;
   let directPurchaseError: string | null = null;
+  const user = await getAuthenticatedUser();
 
   if (directPurchaseToken) {
-    const user = await getAuthenticatedUser();
     if (!directPurchase) {
       selectedPlan = null;
       directPurchaseError = "This purchase link is invalid or has expired. Choose an active package below.";
@@ -46,7 +46,6 @@ export default async function PricingPage({
         "This purchase link belongs to another workspace. Choose a package for your signed-in workspace below.";
     }
   } else if (selectedPlanId) {
-    const user = await getAuthenticatedUser();
     if (!user) redirect(`/login?next=/pricing?plan=${encodeURIComponent(selectedPlanId)}`);
   }
 
@@ -57,7 +56,7 @@ export default async function PricingPage({
           The Realestate Link
         </Link>
         <Button asChild variant="secondary" className="border border-emerald-100 bg-white hover:bg-emerald-50">
-          <Link href="/login">Sign in</Link>
+          <Link href={user ? "/dashboard" : "/login"}>{user ? "Dashboard" : "Sign in"}</Link>
         </Button>
       </header>
 
@@ -68,7 +67,7 @@ export default async function PricingPage({
             Publish property pages with listing credits.
           </h1>
           <p className="mt-5 text-base leading-7 text-zinc-700 sm:text-lg">
-            Choose a package, sign in, and keep the selected plan attached to your pricing page.
+            Pick a package and checkout directly. Credits land in your broker workspace after payment.
           </p>
         </div>
 
@@ -76,20 +75,21 @@ export default async function PricingPage({
           <div className="mt-7 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             {directPurchaseError}
           </div>
-        ) : selectedPlan ? (
+        ) : selectedPlan && user && selectedPlan.amountPaise > 0 ? (
           <RazorpayCheckout
             planId={selectedPlan.id}
             planLabel={selectedPlan.name}
             priceLabel={formatPlanPrice(selectedPlan)}
+            buttonLabel={`Buy ${selectedPlan.name}`}
           />
-        ) : selectedPlanId ? (
+        ) : selectedPlanId && !selectedPlan ? (
           <div className="mt-7 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             That package is not currently available. Choose an active package below.
           </div>
         ) : null}
       </section>
 
-      <PricingSection plans={plans} selectedPlanId={selectedPlan?.id ?? null} />
+      <PricingSection plans={plans} selectedPlanId={selectedPlan?.id ?? null} isSignedIn={Boolean(user)} />
     </main>
   );
 }

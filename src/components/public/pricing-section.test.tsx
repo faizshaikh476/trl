@@ -19,20 +19,26 @@ describe("PricingSection", () => {
     expect(starter.getByText("25 listing credits")).toBeInTheDocument();
     expect(starter.getByText("30-day credit validity")).toBeInTheDocument();
     expect(starter.getByText("60-day listing visibility")).toBeInTheDocument();
-    expect(starter.getByRole("link", { name: "Choose Starter" })).toHaveAttribute("href", "/pricing?plan=starter");
+    expect(starter.getByRole("link", { name: "Buy Starter" })).toHaveAttribute(
+      "href",
+      "/login?next=/pricing?plan=starter",
+    );
   });
 
-  it("marks the selected plan and hands it off to checkout", () => {
-    render(<PricingSection plans={[plan("starter", 10, "Starter"), plan("growth", 20, "Growth")]} selectedPlanId="growth" />);
+  it("marks the selected plan and opens checkout directly for signed-in users", () => {
+    render(
+      <PricingSection
+        plans={[plan("starter", 10, "Starter"), plan("growth", 20, "Growth")]}
+        selectedPlanId="growth"
+        isSignedIn
+      />,
+    );
 
     const growth = screen.getAllByTestId("pricing-plan-card").find((card) => within(card).queryByRole("heading", { name: "Growth" }));
 
     expect(growth).toBeDefined();
     expect(within(growth!).getByText("Selected package")).toBeInTheDocument();
-    expect(within(growth!).getByRole("link", { name: "Continue with Growth" })).toHaveAttribute(
-      "href",
-      "/pricing?plan=growth#checkout",
-    );
+    expect(within(growth!).getByRole("button", { name: "Buy Growth" })).toBeInTheDocument();
   });
 });
 

@@ -3,11 +3,15 @@
 import { useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface RazorpayCheckoutProps {
   planId: string;
   planLabel: string;
   priceLabel: string;
+  buttonLabel?: string;
+  className?: string;
+  variant?: "panel" | "button";
 }
 
 interface BillingOrderResponse {
@@ -56,6 +60,9 @@ export function RazorpayCheckout({
   planId,
   planLabel,
   priceLabel,
+  buttonLabel,
+  className,
+  variant = "panel",
 }: RazorpayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -138,11 +145,29 @@ export function RazorpayCheckout({
     }
   }
 
-  return (
-    <div
-      id="checkout"
-      className="mt-7 rounded-lg border border-emerald-200 bg-white p-4 text-sm text-zinc-700 shadow-sm"
+  const button = (
+    <Button
+      type="button"
+      className={cn("bg-emerald-600 text-white hover:bg-emerald-700", className)}
+      onClick={startCheckout}
+      disabled={isLoading}
     >
+      {isLoading ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
+      {isLoading ? "Opening checkout" : buttonLabel ?? "Buy credits"}
+    </Button>
+  );
+
+  if (variant === "button") {
+    return (
+      <div className="mt-6">
+        {button}
+        {message ? <p className="mt-3 text-sm text-red-700">{message}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div id="checkout" className="mt-7 rounded-lg border border-emerald-200 bg-white p-4 text-sm text-zinc-700 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p>
@@ -150,15 +175,7 @@ export function RazorpayCheckout({
           </p>
           <p className="mt-1 text-zinc-600">One-time purchase: {priceLabel}</p>
         </div>
-        <Button
-          type="button"
-          className="bg-emerald-600 text-white hover:bg-emerald-700"
-          onClick={startCheckout}
-          disabled={isLoading}
-        >
-          {isLoading ? <Loader2 className="size-4 animate-spin" /> : <CreditCard className="size-4" />}
-          {isLoading ? "Opening checkout" : "Buy credits"}
-        </Button>
+        {button}
       </div>
       {message ? <p className="mt-3 text-sm text-red-700">{message}</p> : null}
     </div>
