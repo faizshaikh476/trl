@@ -5,7 +5,7 @@ import {
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
-import type { Listing, Plan, Workspace } from "@/types/domain";
+import type { CreditPurchase, CreditWallet, Listing, Plan, Workspace } from "@/types/domain";
 
 export type PlanInput = {
   name: string;
@@ -28,6 +28,31 @@ export type PlanUsage = {
   limit: number;
   remaining: number;
   isAtLimit: boolean;
+};
+
+export type BillingPurchaseSummary = {
+  id: string;
+  planId: string;
+  planName: string;
+  status: CreditPurchase["status"];
+  credits: number;
+  amountLabel: string;
+  providerOrderId: string | null;
+  providerPaymentId: string | null;
+  paidAt: string | null;
+  createdAt: string;
+};
+
+export type WorkspaceBillingSummary = {
+  currentPackageName: string;
+  currentPackageId: string;
+  availableCredits: number;
+  validUntil: string | null;
+  validUntilLabel: string;
+  isWalletActive: boolean;
+  purchaseCount: number;
+  latestPaidPurchase: BillingPurchaseSummary | null;
+  purchases: BillingPurchaseSummary[];
 };
 
 export const LISTING_CREDIT_VALIDITY_DAYS = 30;
@@ -270,6 +295,45 @@ export function formatPlanPrice(plan: Plan) {
   return `${plan.currency} ${formatted}`;
 }
 
+export function buildWorkspaceBillingSummary({
+  workspace,
+  wallet,
+  purchases,
+  plans,
+  now = new Date(),
+}: {
+  workspace: Workspace;
+  wallet: CreditWallet | null;
+  purchases: CreditPurchase[];
+  plans: Plan[];
+  now?: Date;
+}): WorkspaceBillingSummary {
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  const sortedPurchases = [...purchases].sort((a, b) => purchaseTime(b) - purchaseTime(a));
+  const paidPurchases = sortedPurchases.filter((purchase) => purchase.status === "paid");
+  const latestPaidPurchase =
+    (wallet?.lastPurchaseId
+      ? paidPurchases.find((purchase) => purchase.id === wallet.lastPurchaseId)
+      : null) ?? paidPurchases[0] ?? null;
+  const defaultPlan = planById.get(workspace.planId);
+  const currentPlan = latestPaidPurchase ? planById.get(latestPaidPurchase.planId) : defaultPlan;
+  const validUntil = wallet?.validUntil ?? null;
+
+  return {
+    currentPackageName: currentPlan?.name ?? workspace.planId,
+    currentPackageId: currentPlan?.id ?? workspace.planId,
+    availableCredits: Math.max(0, wallet?.availableCredits ?? 0),
+    validUntil,
+    validUntilLabel: validUntil ? formatCreditDate(validUntil) : "No active credits",
+    isWalletActive: Boolean(validUntil && Date.parse(validUntil) > now.getTime()),
+    purchaseCount: purchases.length,
+    latestPaidPurchase: latestPaidPurchase
+      ? summarizePurchase(latestPaidPurchase, planById)
+      : null,
+    purchases: sortedPurchases.map((purchase) => summarizePurchase(purchase, planById)),
+  };
+}
+
 export function planIdFromName(name: string) {
   return name
     .trim()
@@ -369,6 +433,48 @@ function normalizeLegacyAmountPaise(priceLabel: string | null) {
   if (!Number.isFinite(rupees) || rupees < 0) return 0;
   const amountPaise = Math.round(rupees * 100);
   return amountPaise >= 0 ? amountPaise : 0;
+}
+
+function summarizePurchase(purchase: CreditPurchase, planById: Map<string, Plan>) {
+  return {
+    id: purchase.id,
+    planId: purchase.planId,
+    planName: planById.get(purchase.planId)?.name ?? purchase.planId,
+    status: purchase.status,
+    credits: purchase.quantity,
+    amountLabel: formatPurchaseAmount(purchase.amountPaise, purchase.currency),
+    providerOrderId: purchase.providerOrderId,
+    providerPaymentId: purchase.providerPaymentId,
+    paidAt: purchase.paidAt,
+    createdAt: purchase.createdAt,
+  } satisfies BillingPurchaseSummary;
+}
+
+function formatPurchaseAmount(amountPaise: number, currency: Plan["currency"]) {
+  if (amountPaise <= 0) return "Free";
+  const rupees = amountPaise / 100;
+  const hasFraction = amountPaise % 100 !== 0;
+  const formatted = new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: hasFraction ? 2 : 0,
+  }).format(rupees);
+  return `${currency} ${formatted}`;
+}
+
+function formatCreditDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function purchaseTime(purchase: CreditPurchase) {
+  const timestamp = purchase.paidAt ?? purchase.updatedAt ?? purchase.createdAt;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizePlanRecord(plan: Record<string, unknown>) {

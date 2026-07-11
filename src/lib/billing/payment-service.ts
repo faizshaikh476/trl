@@ -26,6 +26,7 @@ export interface PaymentStore {
   ): Promise<CreditPurchase>;
   findPurchaseById(purchaseId: string): Promise<CreditPurchase | null>;
   findPurchaseByProviderOrderId(providerOrderId: string): Promise<CreditPurchase | null>;
+  listPurchasesByWorkspace(workspaceId: string, limit?: number): Promise<CreditPurchase[]>;
   markPaid(input: {
     purchaseId: string;
     providerPaymentId: string;
@@ -178,6 +179,11 @@ export class PaymentService {
     });
 
     return this.ensurePurchaseCreditsGranted(result.purchase);
+  }
+
+  async listPurchasesByWorkspace(workspaceId: string, limit = 25) {
+    assertIdentifier(workspaceId, "workspaceId");
+    return this.dependencies.store.listPurchasesByWorkspace(workspaceId, limit);
   }
 
   async processWebhook(rawBody: string, signature: string | null) {
@@ -355,6 +361,17 @@ export class FirestorePaymentStore implements PaymentStore {
     return snapshot.empty ? null : (snapshot.docs[0].data() as CreditPurchase);
   }
 
+  async listPurchasesByWorkspace(workspaceId: string, limit = 25) {
+    const snapshot = await this.db
+      .collection(firestorePaths.purchases())
+      .where("workspaceId", "==", workspaceId)
+      .get();
+    return snapshot.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }) as CreditPurchase)
+      .sort((a, b) => purchaseSortTime(b) - purchaseSortTime(a))
+      .slice(0, limit);
+  }
+
   async markPaid(input: {
     purchaseId: string;
     providerPaymentId: string;
@@ -477,6 +494,10 @@ class FirestorePaymentTransaction implements PaymentStore {
         .limit(1),
     );
     return snapshot.empty ? null : (snapshot.docs[0].data() as CreditPurchase);
+  }
+
+  listPurchasesByWorkspace(): Promise<CreditPurchase[]> {
+    throw new Error("Listing purchases inside payment transactions is not supported.");
   }
 
   async markPaid(input: {
@@ -681,6 +702,12 @@ function readString(value: unknown) {
 
 function assertConfiguredSecret(value: string, name: string) {
   if (!value) throw new Error(`${name} is not configured.`);
+}
+
+function purchaseSortTime(purchase: CreditPurchase) {
+  const timestamp = purchase.paidAt ?? purchase.updatedAt ?? purchase.createdAt;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function hmac(value: string, secret: string) {

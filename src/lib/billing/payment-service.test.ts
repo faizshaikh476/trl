@@ -47,6 +47,15 @@ class InMemoryPaymentStore implements PaymentStore {
     );
   }
 
+  async listPurchasesByWorkspace(workspaceId: string, limit = 25) {
+    return structuredClone(
+      [...this.purchases.values()]
+        .filter((purchase) => purchase.workspaceId === workspaceId)
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        .slice(0, limit),
+    );
+  }
+
   async markPaid(input: {
     purchaseId: string;
     providerPaymentId: string;

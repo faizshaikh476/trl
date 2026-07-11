@@ -1,8 +1,12 @@
+import Link from "next/link";
 import { AppShell } from "@/components/dashboard/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { billingService, buildWorkspaceBillingSummary } from "@/lib/billing/billing-service";
+import { creditWalletService } from "@/lib/billing/credit-wallet-service";
+import { paymentService } from "@/lib/billing/payment-service";
 import { ownerProfileIdForPhone, ownerProfileService } from "@/lib/owners/owner-profile-service";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import { updateWorkspaceProfileAction } from "@/server-actions/workspace-actions";
@@ -24,8 +28,8 @@ const workspaceSettings = [
     status: "Public",
   },
   {
-    title: "Plan",
-    description: "Your current listing allowance.",
+    title: "Billing",
+    description: "Your listing credits and purchase history.",
     status: "Current",
   },
 ];
@@ -40,6 +44,17 @@ export default async function SettingsPage() {
         ownerProfileIdForPhone(workspace.contactPhone),
       )
     : null;
+  const [plans, purchases, wallet] = await Promise.all([
+    billingService.listActivePlans(),
+    paymentService.listPurchasesByWorkspace(workspace.id, 10),
+    creditWalletService.getWallet(workspace.id),
+  ]);
+  const billingSummary = buildWorkspaceBillingSummary({
+    workspace,
+    plans,
+    purchases,
+    wallet,
+  });
 
   return (
     <AppShell active="Settings">
@@ -168,8 +183,13 @@ export default async function SettingsPage() {
               <p className="mt-1 font-medium text-stone-950">{workspace.contactPhone}</p>
             </div>
             <div>
-              <p className="text-sm text-stone-500">Plan</p>
-              <p className="mt-1 font-medium text-stone-950">{workspace.planId.toUpperCase()}</p>
+              <p className="text-sm text-stone-500">Credits</p>
+              <p className="mt-1 font-medium text-stone-950">
+                {billingSummary.availableCredits} · {billingSummary.currentPackageName}
+              </p>
+              <Link href="/dashboard/billing" className="mt-2 inline-flex text-sm font-medium text-emerald-700 hover:text-emerald-800">
+                View purchases
+              </Link>
             </div>
           </div>
         </section>

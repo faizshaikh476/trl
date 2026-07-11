@@ -148,6 +148,11 @@ export class CreditWalletService {
     assertIdentifier(workspaceId, "workspaceId");
     return (await this.store.getWallet(workspaceId))?.availableCredits ?? 0;
   }
+
+  async getWallet(workspaceId: string) {
+    assertIdentifier(workspaceId, "workspaceId");
+    return this.store.getWallet(workspaceId);
+  }
 }
 
 export class FirestoreCreditWalletStore implements CreditWalletStore {

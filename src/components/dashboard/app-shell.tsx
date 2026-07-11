@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, ClipboardList, GalleryVerticalEnd, Home, Inbox, Settings } from "lucide-react";
+import { Building2, ClipboardList, CreditCard, GalleryVerticalEnd, Home, Inbox, Settings } from "lucide-react";
 import { SignOutForm } from "@/components/auth/sign-out-form";
 import { getPlatformBranding } from "@/lib/platform/branding";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ const nav = [
   { href: "/dashboard/listings", label: "Listings", icon: Building2 },
   { href: "/catalogue", label: "Catalogue", icon: GalleryVerticalEnd },
   { href: "/dashboard/leads", label: "Leads", icon: Inbox },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

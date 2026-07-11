@@ -70,6 +70,7 @@ vi.mock("@/lib/workspaces/workspace-service", () => ({
 
 import {
   BillingService,
+  buildWorkspaceBillingSummary,
   calculatePlanUsage,
   defaultPlans,
   formatPlanPrice,
@@ -287,6 +288,73 @@ describe("formatPlanPrice", () => {
         currency: "INR",
       }),
     ).toBe("INR 7,999");
+  });
+});
+
+describe("buildWorkspaceBillingSummary", () => {
+  it("shows the latest paid credit package instead of the workspace default plan", () => {
+    const workspace = {
+      id: "workspace_1",
+      name: "Broker 1",
+      slug: "broker-1",
+      city: "Pune",
+      ownerId: "owner_1",
+      logoURL: "",
+      contactName: "Owner",
+      contactPhone: "9999999999",
+      contactEmail: "owner@example.com",
+      websiteTheme: "premium",
+      customDomain: null,
+      planId: "free",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as const;
+    const plans = [
+      plan("free", "Free", "active", 1),
+      plan("pro", "Pro", "active", 20),
+    ];
+    const summary = buildWorkspaceBillingSummary({
+      workspace,
+      plans,
+      wallet: {
+        availableCredits: 34,
+        validUntil: "2026-08-10T15:41:41.070Z",
+        lastPurchaseId: "purchase_pro",
+        createdAt: "2026-07-11T15:41:41.070Z",
+        updatedAt: "2026-07-11T15:41:41.070Z",
+      },
+      purchases: [
+        {
+          id: "purchase_pro",
+          workspaceId: workspace.id,
+          planId: "pro",
+          quantity: 30,
+          validityDays: 30,
+          amountPaise: 29900,
+          currency: "INR",
+          status: "paid",
+          provider: "razorpay",
+          providerOrderId: "order_1",
+          providerPaymentId: "pay_1",
+          providerRefundId: null,
+          providerEventIds: [],
+          creditGrantLedgerEntryId: "grant:purchase:purchase_pro",
+          creditsGrantedAt: "2026-07-11T15:41:41.070Z",
+          failureReason: null,
+          paidAt: "2026-07-11T15:41:41.070Z",
+          refundedAt: null,
+          createdAt: "2026-07-11T15:40:00.000Z",
+          updatedAt: "2026-07-11T15:41:41.070Z",
+        },
+      ],
+      now: new Date("2026-07-11T16:00:00.000Z"),
+    });
+
+    expect(summary.currentPackageName).toBe("Pro");
+    expect(summary.availableCredits).toBe(34);
+    expect(summary.validUntilLabel).toBe("10 Aug 2026");
+    expect(summary.purchaseCount).toBe(1);
   });
 });
 

@@ -1,11 +1,15 @@
+import Link from "next/link";
 import { AppShell } from "@/components/dashboard/app-shell";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ListingTable } from "@/components/listings/listing-table";
 import { notFound } from "next/navigation";
-import { Activity, ArrowUpRight, Building2, Inbox, MessageCircle, Share2, Sparkles } from "lucide-react";
+import { Activity, ArrowUpRight, Building2, Inbox, MessageCircle, Share2, Sparkles, WalletCards } from "lucide-react";
 import { analyticsService } from "@/lib/analytics/analytics-service";
 import { auditLogService } from "@/lib/audit/audit-log-service";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { billingService, buildWorkspaceBillingSummary } from "@/lib/billing/billing-service";
+import { creditWalletService } from "@/lib/billing/credit-wallet-service";
+import { paymentService } from "@/lib/billing/payment-service";
 import { formatNumber } from "@/lib/format";
 import { leadService } from "@/lib/leads/lead-service";
 import { listingService } from "@/lib/listings/listing-service";
@@ -15,12 +19,21 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   const workspace = await workspaceService.findById(user.workspaceId!);
   if (!workspace) notFound();
-  const [listings, leads, totals, auditLogs] = await Promise.all([
+  const [listings, leads, totals, auditLogs, plans, purchases, wallet] = await Promise.all([
     listingService.listByWorkspace(workspace.id),
     leadService.listByWorkspace(workspace.id),
     analyticsService.totals(workspace.id),
     auditLogService.listByWorkspace(workspace.id),
+    billingService.listActivePlans(),
+    paymentService.listPurchasesByWorkspace(workspace.id, 10),
+    creditWalletService.getWallet(workspace.id),
   ]);
+  const billingSummary = buildWorkspaceBillingSummary({
+    workspace,
+    plans,
+    purchases,
+    wallet,
+  });
 
   return (
     <AppShell active="Overview">
@@ -43,6 +56,7 @@ export default async function DashboardPage() {
               <p className="text-sm font-semibold text-stone-950">Today’s focus</p>
               <div className="mt-5 space-y-4 text-sm text-stone-600">
                 <FocusRow icon={Building2} label={`${listings.filter((item) => item.status === "published").length} live listings`} />
+                <FocusRow icon={WalletCards} label={`${formatNumber(billingSummary.availableCredits)} credits available`} />
                 <FocusRow icon={Inbox} label={`${leads.length} buyer enquiries`} />
                 <FocusRow icon={Activity} label={`${formatNumber(totals.views)} listing views`} />
                 <FocusRow icon={MessageCircle} label={`${formatNumber(totals.whatsappClicks)} WhatsApp taps`} />
@@ -59,6 +73,20 @@ export default async function DashboardPage() {
           <StatCard tone="light" label="Share + calls" value={formatNumber(totals.shares + totals.callClicks)} detail={`${formatNumber(totals.shares)} shares · ${formatNumber(totals.callClicks)} calls`} />
         </div>
         <section className="grid gap-4 lg:grid-cols-3">
+          <Link href="/dashboard/billing" className="block rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-5 shadow-sm shadow-emerald-100/60 transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-full bg-white text-emerald-700">
+                <WalletCards className="size-5" />
+              </span>
+              <p className="text-sm font-medium text-emerald-800">Listing credits</p>
+            </div>
+            <p className="mt-4 text-3xl font-semibold tracking-tight text-stone-950">
+              {formatNumber(billingSummary.availableCredits)}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              {billingSummary.currentPackageName} · valid until {billingSummary.validUntilLabel}
+            </p>
+          </Link>
           <EngagementCard icon={Activity} label="Enquiry rate" value={`${totals.conversionRate}%`} detail="Enquiries from property views." />
           <EngagementCard icon={MessageCircle} label="WhatsApp enquiries" value={formatNumber(totals.whatsappClicks)} detail="Buyers who opened WhatsApp." />
           <EngagementCard icon={Share2} label="Shares" value={formatNumber(totals.shares)} detail="Property links shared." />
