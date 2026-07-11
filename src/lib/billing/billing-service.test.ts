@@ -356,6 +356,82 @@ describe("buildWorkspaceBillingSummary", () => {
     expect(summary.validUntilLabel).toBe("10 Aug 2026");
     expect(summary.purchaseCount).toBe(1);
   });
+
+  it("does not count abandoned checkout attempts as broker purchases", () => {
+    const workspace = {
+      id: "workspace_1",
+      name: "Broker 1",
+      slug: "broker-1",
+      city: "Pune",
+      ownerId: "owner_1",
+      logoURL: "",
+      contactName: "Owner",
+      contactPhone: "9999999999",
+      contactEmail: "owner@example.com",
+      websiteTheme: "premium",
+      customDomain: null,
+      planId: "free",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as const;
+    const plans = [
+      plan("free", "Free", "active", 1),
+      plan("starter", "Starter", "active", 10),
+    ];
+    const paidPurchase = {
+      id: "purchase_paid",
+      workspaceId: workspace.id,
+      planId: "starter",
+      quantity: 15,
+      validityDays: 30,
+      amountPaise: 19900,
+      currency: "INR" as const,
+      status: "paid" as const,
+      provider: "razorpay" as const,
+      providerOrderId: "order_paid",
+      providerPaymentId: "pay_paid",
+      providerRefundId: null,
+      providerEventIds: [],
+      creditGrantLedgerEntryId: "grant:purchase:purchase_paid",
+      creditsGrantedAt: "2026-07-11T15:41:41.070Z",
+      failureReason: null,
+      paidAt: "2026-07-11T15:41:41.070Z",
+      refundedAt: null,
+      createdAt: "2026-07-11T15:40:00.000Z",
+      updatedAt: "2026-07-11T15:41:41.070Z",
+    };
+    const pendingPurchase = {
+      ...paidPurchase,
+      id: "purchase_pending",
+      status: "pending" as const,
+      providerOrderId: "order_pending",
+      providerPaymentId: null,
+      creditGrantLedgerEntryId: null,
+      creditsGrantedAt: null,
+      paidAt: null,
+      createdAt: "2026-07-11T16:00:00.000Z",
+      updatedAt: "2026-07-11T16:00:00.000Z",
+    };
+
+    const summary = buildWorkspaceBillingSummary({
+      workspace,
+      plans,
+      wallet: {
+        availableCredits: 15,
+        validUntil: "2026-08-10T15:41:41.070Z",
+        lastPurchaseId: "purchase_paid",
+        createdAt: "2026-07-11T15:41:41.070Z",
+        updatedAt: "2026-07-11T15:41:41.070Z",
+      },
+      purchases: [pendingPurchase, paidPurchase],
+      now: new Date("2026-07-11T16:00:00.000Z"),
+    });
+
+    expect(summary.purchaseCount).toBe(1);
+    expect(summary.purchases).toHaveLength(1);
+    expect(summary.purchases[0].id).toBe("purchase_paid");
+  });
 });
 
 describe("defaultPlans", () => {

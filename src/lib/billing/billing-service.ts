@@ -310,6 +310,9 @@ export function buildWorkspaceBillingSummary({
 }): WorkspaceBillingSummary {
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const sortedPurchases = [...purchases].sort((a, b) => purchaseTime(b) - purchaseTime(a));
+  const completedPurchases = sortedPurchases.filter((purchase) =>
+    ["paid", "refunded"].includes(purchase.status),
+  );
   const paidPurchases = sortedPurchases.filter((purchase) => purchase.status === "paid");
   const latestPaidPurchase =
     (wallet?.lastPurchaseId
@@ -326,11 +329,11 @@ export function buildWorkspaceBillingSummary({
     validUntil,
     validUntilLabel: validUntil ? formatCreditDate(validUntil) : "No active credits",
     isWalletActive: Boolean(validUntil && Date.parse(validUntil) > now.getTime()),
-    purchaseCount: purchases.length,
+    purchaseCount: completedPurchases.length,
     latestPaidPurchase: latestPaidPurchase
       ? summarizePurchase(latestPaidPurchase, planById)
       : null,
-    purchases: sortedPurchases.map((purchase) => summarizePurchase(purchase, planById)),
+    purchases: completedPurchases.map((purchase) => summarizePurchase(purchase, planById)),
   };
 }
 

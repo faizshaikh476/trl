@@ -78,7 +78,7 @@ export default async function AdminOrdersPage({
     <AdminSectionPage
       active="Orders"
       title="Orders"
-      description="Track package purchases, Razorpay status, and credit wallet fulfilment."
+      description="Track paid credit purchases, Razorpay status, and wallet fulfilment."
       cards={[
         {
           title: "Paid revenue",
@@ -143,9 +143,14 @@ export default async function AdminOrdersPage({
           <div className="overflow-hidden rounded-lg border border-cyan-300/10 bg-white/[0.06]">
             <div className="flex flex-col gap-2 border-b border-cyan-300/10 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold">{filteredPurchases.length} order(s)</h2>
+                <h2 className="text-xl font-semibold">
+                  {filteredPurchases.length} {selectedStatus === "paid" ? "paid purchase" : "payment record"}
+                  {filteredPurchases.length === 1 ? "" : "s"}
+                </h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Showing latest {ORDER_LIMIT} orders, newest first.
+                  {selectedStatus === "paid"
+                    ? "Showing captured payments only. Use the status filter for pending checkout attempts."
+                    : `Showing latest ${ORDER_LIMIT} records, newest first.`}
                 </p>
               </div>
               <Badge className="w-fit bg-cyan-300 text-slate-950">Razorpay</Badge>
@@ -260,7 +265,7 @@ export default async function AdminOrdersPage({
               </div>
               <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-400">
                 <li>Paid orders should show a payment ID and a credit grant.</li>
-                <li>Pending orders are usually abandoned checkouts until Razorpay captures payment.</li>
+                <li>Pending records are checkout attempts. They are not purchases until Razorpay captures payment.</li>
                 <li>Webhook events confirm Razorpay reached our `/api/billing/webhook` endpoint.</li>
                 <li>Use workspace wallet balance to confirm credits are available before the next listing.</li>
               </ul>
@@ -282,7 +287,8 @@ async function listRecentPurchases() {
 }
 
 function normalizeStatus(value: string | undefined): StatusFilter {
-  return statuses.includes(value as StatusFilter) ? (value as StatusFilter) : "all";
+  if (!value) return "paid";
+  return statuses.includes(value as StatusFilter) ? (value as StatusFilter) : "paid";
 }
 
 function StatusBadge({ status }: { status: CreditPurchase["status"] }) {
