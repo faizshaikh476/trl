@@ -46,6 +46,8 @@ type QuickFact = {
   icon: ComponentType<{ className?: string }>;
 };
 
+const CREATE_LISTING_WHATSAPP_URL = "https://wa.me/message/J5AZEENAAMZVK1";
+
 export default async function PublicListingPage({
   params,
   searchParams,
@@ -335,15 +337,25 @@ export default async function PublicListingPage({
             </section>
 
             <section className="py-7 sm:py-10">
-              <div className="rounded-lg bg-zinc-950 p-5 text-white sm:p-8">
-                <p className="text-sm font-medium text-emerald-300">Property brief</p>
-                <h2 className="mt-3 max-w-2xl text-2xl font-semibold tracking-tight">
-                  The key details, ready for a serious buyer.
-                </h2>
-                <p className="mt-3 max-w-3xl leading-7 text-zinc-300">
-                  Photos, pricing, highlights, location notes, and broker contact stay together
-                  in one clean link.
-                </p>
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-5 shadow-[0_16px_50px_rgba(16,185,129,0.10)] sm:flex sm:items-center sm:justify-between sm:gap-8 sm:p-7">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-700">Made with The Realestate Link</p>
+                  <h2 className="mt-3 max-w-2xl text-2xl font-semibold tracking-tight text-zinc-950">
+                    Want a page like this for your property?
+                  </h2>
+                  <p className="mt-3 max-w-3xl leading-7 text-zinc-600">
+                    Send photos and details on WhatsApp. Get a clean listing link that is ready to share.
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  className="mt-5 h-12 w-full bg-zinc-950 text-white hover:bg-zinc-800 sm:mt-0 sm:w-auto"
+                >
+                  <a href={CREATE_LISTING_WHATSAPP_URL} target="_blank" rel="noreferrer">
+                    Create your listing
+                    <ArrowRight className="size-4" />
+                  </a>
+                </Button>
               </div>
             </section>
           </article>
