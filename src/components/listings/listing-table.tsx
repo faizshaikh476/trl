@@ -10,6 +10,7 @@ import {
   Inbox,
   Plus,
   Send,
+  SlidersHorizontal,
   ShieldCheck,
   XCircle,
 } from "lucide-react";
@@ -21,9 +22,35 @@ import {
   duplicateListingAction,
   updateListingStatusAction,
 } from "@/server-actions/listing-actions";
-import type { Listing, MediaAsset } from "@/types/domain";
+import type { Listing, ListingStatus, MediaAsset } from "@/types/domain";
 
-export async function ListingTable({ listings }: { listings: Listing[] }) {
+type ListingFilters = {
+  q?: string;
+  status?: string;
+  transaction?: string;
+  quality?: string;
+};
+
+const statusOptions: Array<{ label: string; value: ListingStatus }> = [
+  { label: "Published", value: "published" },
+  { label: "Draft", value: "draft" },
+  { label: "Needs review", value: "needs_review" },
+  { label: "Ready to publish", value: "ready_to_publish" },
+  { label: "Unpublished", value: "unpublished" },
+  { label: "Sold", value: "sold" },
+  { label: "Rented", value: "rented" },
+  { label: "Archived", value: "archived" },
+];
+
+export async function ListingTable({
+  listings,
+  filters = {},
+  resetHref = "/dashboard/listings",
+}: {
+  listings: Listing[];
+  filters?: ListingFilters;
+  resetHref?: string;
+}) {
   if (!listings.length) {
     return (
       <div className="rounded-[1.5rem] border border-stone-200 bg-white p-8 text-center shadow-sm shadow-stone-200/60">
@@ -52,10 +79,84 @@ export async function ListingTable({ listings }: { listings: Listing[] }) {
     ),
   );
   const heroes = new Map<string, MediaAsset | null>(heroEntries);
+  const filteredListings = filterListings(listings, filters);
+  const hasFilters = Boolean(filters.q || filters.status || filters.transaction || filters.quality);
 
   return (
-    <div className="space-y-3">
-      {listings.map((listing) => {
+    <div className="space-y-4">
+      <form className="rounded-[1.5rem] border border-stone-200 bg-white p-3 shadow-sm shadow-stone-200/60 sm:p-4">
+        <div className="flex items-center gap-2 px-1 pb-3 text-sm font-semibold text-stone-950">
+          <SlidersHorizontal className="size-4 text-emerald-700" />
+          Filters
+          {hasFilters ? (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+              {filteredListings.length} shown
+            </span>
+          ) : null}
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(14rem,1fr)_11rem_10rem_11rem_auto]">
+          <input
+            name="q"
+            defaultValue={filters.q ?? ""}
+            placeholder="Search title or location"
+            className="min-h-11 min-w-0 rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+          />
+          <select
+            name="status"
+            defaultValue={filters.status ?? ""}
+            className="min-h-11 rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+          >
+            <option value="">All status</option>
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            name="transaction"
+            defaultValue={filters.transaction ?? ""}
+            className="min-h-11 rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+          >
+            <option value="">Buy / rent</option>
+            <option value="sale">Buy</option>
+            <option value="rent">Rent</option>
+          </select>
+          <select
+            name="quality"
+            defaultValue={filters.quality ?? ""}
+            className="min-h-11 rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+          >
+            <option value="">All quality</option>
+            <option value="strong">75+ score</option>
+            <option value="review">Below 75</option>
+          </select>
+          <div className="grid grid-cols-2 gap-2 md:flex">
+            <Button type="submit" className="min-h-11 rounded-2xl bg-stone-950 px-5 text-white hover:bg-stone-800">
+              Apply
+            </Button>
+            {hasFilters ? (
+              <Button asChild variant="outline" className="min-h-11 rounded-2xl border-stone-200 bg-white px-5 text-stone-700 hover:bg-stone-100">
+                <Link href={resetHref}>Reset</Link>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </form>
+
+      {!filteredListings.length ? (
+        <div className="rounded-[1.5rem] border border-stone-200 bg-white p-8 text-center shadow-sm shadow-stone-200/60">
+          <h2 className="text-xl font-semibold text-stone-950">No matching listings</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-500">
+            Try a different search or clear the filters.
+          </p>
+          <Button asChild variant="outline" className="mt-5 rounded-2xl border-stone-200 bg-white text-stone-950 hover:bg-stone-100">
+            <Link href={resetHref}>Clear filters</Link>
+          </Button>
+        </div>
+      ) : null}
+
+      {filteredListings.map((listing) => {
         const hero = heroes.get(listing.id);
         const statusTone =
           listing.status === "published"
@@ -205,4 +306,30 @@ export async function ListingTable({ listings }: { listings: Listing[] }) {
       })}
     </div>
   );
+}
+
+function filterListings(listings: Listing[], filters: ListingFilters) {
+  const q = filters.q?.trim().toLowerCase();
+  return listings.filter((listing) => {
+    if (q) {
+      const haystack = [
+        listing.title,
+        listing.location,
+        listing.locality,
+        listing.societyName,
+        listing.city,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    if (filters.status && listing.status !== filters.status) return false;
+    if (filters.transaction && listing.transactionType !== filters.transaction) return false;
+    if (filters.quality === "strong" && listing.qualityScore < 75) return false;
+    if (filters.quality === "review" && listing.qualityScore >= 75) return false;
+
+    return true;
+  });
 }

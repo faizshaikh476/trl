@@ -15,7 +15,12 @@ import { leadService } from "@/lib/leads/lead-service";
 import { listingService } from "@/lib/listings/listing-service";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; transaction?: string; quality?: string }>;
+}) {
+  const query = await searchParams;
   const user = await getCurrentUser();
   const workspace = await workspaceService.findById(user.workspaceId!);
   if (!workspace) notFound();
@@ -98,7 +103,7 @@ export default async function DashboardPage() {
               <p className="text-sm text-stone-500">Review performance and manage your properties.</p>
             </div>
           </div>
-          <ListingTable listings={listings} />
+          <ListingTable listings={listings} filters={query} resetHref="/dashboard" />
         </section>
         <section className="rounded-[1.5rem] border border-stone-200 bg-white p-5 shadow-sm shadow-stone-200/60">
           <h2 className="text-xl font-semibold text-stone-950">Recent activity</h2>

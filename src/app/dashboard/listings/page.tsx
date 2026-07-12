@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { listingService } from "@/lib/listings/listing-service";
 
-export default async function DashboardListingsPage() {
+export default async function DashboardListingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; transaction?: string; quality?: string }>;
+}) {
+  const query = await searchParams;
   const user = await getCurrentUser();
   const listings = await listingService.listByWorkspace(user.workspaceId!);
 
@@ -29,7 +34,7 @@ export default async function DashboardListingsPage() {
             </Link>
           </Button>
         </div>
-        <ListingTable listings={listings} />
+        <ListingTable listings={listings} filters={query} resetHref="/dashboard/listings" />
       </div>
     </AppShell>
   );
