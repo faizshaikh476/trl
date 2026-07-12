@@ -99,15 +99,28 @@ export default async function PublicListingPage({
   const hasVerifiedContact = Boolean(isBrokerVerified && verifiedContactPhone);
   const brokerName = verifiedOwnerProfile?.name?.trim() || "Verified broker";
   const brokerSubtitle = [verifiedOwnerProfile?.occupation, listing.city].filter(Boolean).join(" · ");
-  const whatsappHref = hasVerifiedContact
-    ? `https://wa.me/${verifiedContactPhone}?text=${encodeURIComponent(`Hi, I am interested in ${listing.title}`)}`
-    : "";
   const publicListingUrl = `${getPublicBaseUrl()}/l/${listing.slug}`;
+  const whatsappHref = hasVerifiedContact
+    ? `https://wa.me/${verifiedContactPhone}?text=${encodeURIComponent(
+        `Hi, I am interested in ${listing.title}.\n\n${publicListingUrl}`,
+      )}`
+    : "";
   const brokerCatalogueHref = workspace ? `/b/${workspace.slug}` : "";
   const actionLabel = listing.transactionType === "rent" ? "Rent" : "Buy";
   const priceLabel =
     listing.transactionType === "rent" ? `${formatRupees(listing.price)}/mo` : formatRupees(listing.price);
-  const mobileContext = listing.societyName || listing.locality || listing.city;
+  const mobilePropertyType = listing.bhk ? `${listing.bhk} BHK` : titleCase(listing.propertyType);
+  const mobilePrimaryPlace = listing.societyName || listing.locality || listing.city;
+  const mobileListingTitle = mobilePrimaryPlace
+    ? `${mobilePropertyType} in ${mobilePrimaryPlace}`
+    : listing.title;
+  const mobileSecondaryPlace = [listing.locality, listing.city]
+    .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index)
+    .filter((value) => value !== mobilePrimaryPlace)
+    .join(", ");
+  const mobileListingMeta = [`${actionLabel} · ${priceLabel}`, mobileSecondaryPlace]
+    .filter(Boolean)
+    .join(" · ");
   const isCommercial = /commercial|office|shop|retail|warehouse|showroom/i.test(
     listing.propertyType,
   );
@@ -457,14 +470,14 @@ export default async function PublicListingPage({
       {isBrokerVerified && hasVerifiedContact ? (
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-[#fbfaf7]/96 px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-10px_30px_rgba(24,24,27,0.12)] backdrop-blur sm:hidden">
         <div className="mx-auto grid w-full max-w-lg gap-2">
-          <div className="flex min-w-0 items-center justify-between gap-3 px-1">
-            <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold leading-tight">
-              <IndianRupee className="size-4 shrink-0 text-emerald-700" />
-              <span className="truncate">
-                {actionLabel} · {priceLabel}
-              </span>
+          <div className="min-w-0 px-1">
+            <p className="truncate text-sm font-semibold leading-tight text-zinc-950">
+              {mobileListingTitle}
             </p>
-            <p className="min-w-0 truncate text-right text-xs text-zinc-500">{mobileContext}</p>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
+              <IndianRupee className="size-3.5 shrink-0 text-emerald-700" />
+              <span className="truncate">{mobileListingMeta}</span>
+            </p>
           </div>
           <div className="grid grid-cols-[minmax(0,1fr)_52px_52px] gap-2">
             <Button asChild className="h-[52px] min-w-0 rounded-xl bg-emerald-600 px-4 text-base text-white hover:bg-emerald-700">
