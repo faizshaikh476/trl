@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
-import { billingService, LISTING_CREDIT_VALIDITY_DAYS } from "@/lib/billing/billing-service";
+import { billingService } from "@/lib/billing/billing-service";
 import { creditWalletService } from "@/lib/billing/credit-wallet-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
@@ -111,7 +111,7 @@ export class PaymentService {
       workspaceId: input.workspaceId,
       planId: plan.id,
       quantity: plan.listingCredits,
-      validityDays: LISTING_CREDIT_VALIDITY_DAYS,
+      validityDays: plan.creditValidityDays,
       amountPaise: plan.amountPaise,
       currency: plan.currency,
       status: "pending",
@@ -678,7 +678,7 @@ function assertPurchasablePlan(plan: Plan) {
   if (plan.status !== "active") throw new Error("Selected package is not active.");
   if (plan.amountPaise <= 0) throw new Error("Only paid credit packages can be purchased.");
   if (plan.currency !== "INR") throw new Error("Only INR packages can be purchased.");
-  if (plan.listingCredits <= 0 || LISTING_CREDIT_VALIDITY_DAYS <= 0) {
+  if (plan.listingCredits <= 0 || plan.creditValidityDays <= 0) {
     throw new Error("Selected package is not configured for credit purchases.");
   }
 }

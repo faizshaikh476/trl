@@ -263,7 +263,7 @@ describe("PaymentService", () => {
       workspaceId: "workspace_1",
       planId: "growth",
       quantity: 50,
-      validityDays: 30,
+      validityDays: 45,
       amountPaise: 799900,
       currency: "INR",
       status: "pending",
@@ -364,7 +364,7 @@ describe("PaymentService", () => {
       {
         workspaceId: "workspace_1",
         quantity: 50,
-        validityDays: 30,
+        validityDays: 45,
         sourceId: order.purchaseId,
         sourceType: "purchase",
       },
@@ -406,7 +406,7 @@ describe("PaymentService", () => {
       {
         workspaceId: "workspace_1",
         quantity: 50,
-        validityDays: 30,
+        validityDays: 45,
         sourceId: order.purchaseId,
         sourceType: "purchase",
       },
@@ -496,7 +496,7 @@ describe("PaymentService", () => {
       {
         workspaceId: "workspace_1",
         quantity: 50,
-        validityDays: 30,
+        validityDays: 45,
         sourceId: order.purchaseId,
         sourceType: "purchase",
       },

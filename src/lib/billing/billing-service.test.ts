@@ -116,7 +116,7 @@ describe("parsePlanInput", () => {
     formData.set("amountPaise", "799900");
     formData.set("currency", "INR");
     formData.set("listingCredits", "50");
-    formData.set("creditValidityDays", "30");
+    formData.set("creditValidityDays", "45");
     formData.set("listingVisibilityDays", "60");
     formData.set("featured", "true");
     formData.set("status", "active");
@@ -127,7 +127,7 @@ describe("parsePlanInput", () => {
       amountPaise: 799900,
       currency: "INR",
       listingCredits: 50,
-      creditValidityDays: 30,
+      creditValidityDays: 45,
       listingVisibilityDays: 60,
       featured: true,
       status: "active",
@@ -135,18 +135,20 @@ describe("parsePlanInput", () => {
     });
   });
 
-  it("rejects custom credit validity because credit packages are fixed to 30 days", () => {
+  it("rejects invalid credit validity", () => {
     const formData = new FormData();
     formData.set("name", "Growth");
     formData.set("amountPaise", "799900");
     formData.set("currency", "INR");
     formData.set("listingCredits", "50");
-    formData.set("creditValidityDays", "45");
+    formData.set("creditValidityDays", "0");
     formData.set("listingVisibilityDays", "60");
     formData.set("status", "active");
     formData.set("sortOrder", "20");
 
-    expect(() => parsePlanInput(formData)).toThrow("Credit validity is fixed at 30 days.");
+    expect(() => parsePlanInput(formData)).toThrow(
+      "Credit validity must be a positive whole number of days.",
+    );
   });
 
   it("accepts the current legacy admin form fields", () => {
@@ -435,7 +437,7 @@ describe("buildWorkspaceBillingSummary", () => {
 });
 
 describe("defaultPlans", () => {
-  it("uses 30-day credit validity and 60-day listing visibility for every default plan", () => {
+  it("uses default credit validity and listing visibility for seeded packages", () => {
     expect(defaultPlans).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -478,7 +480,7 @@ describe("BillingService.upsertPlan", () => {
       amountPaise: 799900,
       currency: "INR",
       listingCredits: 50,
-      creditValidityDays: 30,
+      creditValidityDays: 45,
       listingVisibilityDays: 60,
       featured: true,
       status: "active",
@@ -492,7 +494,7 @@ describe("BillingService.upsertPlan", () => {
       amountPaise: 799900,
       currency: "INR",
       listingCredits: 50,
-      creditValidityDays: 30,
+      creditValidityDays: 45,
       listingVisibilityDays: 60,
       featured: true,
       activeListingLimit: 50,
@@ -508,6 +510,7 @@ describe("BillingService.upsertPlan", () => {
         customField: "preserve-me",
         activeListingLimit: 50,
         priceLabel: "INR 7,999",
+        creditValidityDays: 45,
       }),
       { merge: true },
     );
