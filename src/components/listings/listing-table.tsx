@@ -1,9 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BadgeCheck, Building2, Copy, Eye, FilePenLine, Plus, Send, XCircle } from "lucide-react";
+import {
+  BadgeCheck,
+  Building2,
+  Copy,
+  Eye,
+  FilePenLine,
+  IndianRupee,
+  Inbox,
+  Plus,
+  Send,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupees } from "@/lib/format";
 import { mediaService } from "@/lib/media/media-service";
 import {
@@ -43,123 +54,155 @@ export async function ListingTable({ listings }: { listings: Listing[] }) {
   const heroes = new Map<string, MediaAsset | null>(heroEntries);
 
   return (
-    <div className="overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-sm shadow-stone-200/60">
-      <Table>
-        <TableHeader className="bg-stone-50">
-          <TableRow className="border-stone-200 hover:bg-transparent">
-            <TableHead className="text-stone-500">Listing</TableHead>
-            <TableHead className="text-stone-500">Price</TableHead>
-            <TableHead className="text-stone-500">Status</TableHead>
-            <TableHead className="text-stone-500">Quality</TableHead>
-            <TableHead className="text-stone-500">Leads</TableHead>
-            <TableHead className="text-right text-stone-500">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {listings.map((listing) => {
-            const hero = heroes.get(listing.id);
-            return (
-              <TableRow key={listing.id} className="border-stone-100 hover:bg-stone-50/70">
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    {hero ? (
-                      <Image
-                        src={hero.thumbnailUrl}
-                        alt=""
-                        width={64}
-                        height={48}
-                        className="h-16 w-20 rounded-xl object-cover"
-                      />
-                    ) : (
-                      <div className="h-16 w-20 rounded-xl bg-stone-100" />
-                    )}
-                    <div>
-                      <p className="font-medium leading-snug text-stone-950">{listing.title}</p>
-                      <p className="mt-1 line-clamp-1 text-sm text-stone-500">{listing.location}</p>
-                    </div>
+    <div className="space-y-3">
+      {listings.map((listing) => {
+        const hero = heroes.get(listing.id);
+        const statusTone =
+          listing.status === "published"
+            ? "default"
+            : listing.status === "sold" || listing.status === "rented"
+              ? "outline"
+              : "secondary";
+
+        return (
+          <article
+            key={listing.id}
+            className="overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-sm shadow-stone-200/60 transition hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
+              <div className="flex min-w-0 gap-4">
+                {hero ? (
+                  <Image
+                    src={hero.thumbnailUrl}
+                    alt=""
+                    width={128}
+                    height={96}
+                    className="h-24 w-24 flex-none rounded-2xl object-cover sm:h-28 sm:w-36"
+                  />
+                ) : (
+                  <div className="flex h-24 w-24 flex-none items-center justify-center rounded-2xl bg-stone-100 text-stone-300 sm:h-28 sm:w-36">
+                    <Building2 className="size-6" />
                   </div>
-                </TableCell>
-                <TableCell className="font-semibold text-stone-950">{formatRupees(listing.price)}</TableCell>
-                <TableCell>
-                  <Badge variant={listing.status === "published" ? "default" : "secondary"}>
-                    {listing.status.replaceAll("_", " ")}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-stone-700">{listing.qualityScore}/100</TableCell>
-                <TableCell className="text-stone-700">{listing.leads}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button asChild variant="outline" size="sm" className="border-stone-200 bg-white text-stone-950 hover:bg-stone-100">
-                      <Link href={`/dashboard/listings/${listing.id}`}>
-                        <FilePenLine className="size-4" />
-                        Edit
+                )}
+                <div className="min-w-0 flex-1 py-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={statusTone} className="capitalize">
+                      {listing.status.replaceAll("_", " ")}
+                    </Badge>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">
+                      <IndianRupee className="size-3.5" />
+                      {formatRupees(listing.price)}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 max-w-3xl text-base font-semibold leading-snug text-stone-950 sm:text-lg">
+                    {listing.title}
+                  </h3>
+                  <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-6 text-stone-500">
+                    {listing.location}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-stone-600">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
+                      <ShieldCheck className="size-3.5 text-emerald-700" />
+                      Quality {listing.qualityScore}/100
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
+                      <Inbox className="size-3.5 text-emerald-700" />
+                      {listing.leads} leads
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-2 xl:items-end xl:justify-center">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:justify-end">
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="min-h-10 border-stone-200 bg-white text-stone-950 hover:bg-stone-100"
+                  >
+                    <Link href={`/dashboard/listings/${listing.id}`}>
+                      <FilePenLine className="size-4" />
+                      Edit
+                    </Link>
+                  </Button>
+                  {listing.status === "published" ? (
+                    <Button
+                      asChild
+                      variant="secondary"
+                      size="sm"
+                      className="min-h-10 bg-stone-950 text-white hover:bg-stone-800"
+                    >
+                      <Link href={`/l/${listing.slug}`}>
+                        <Eye className="size-4" />
+                        View
                       </Link>
                     </Button>
-                    {listing.status === "published" ? (
-                      <Button asChild variant="secondary" size="sm" className="bg-stone-950 text-white hover:bg-stone-800">
-                        <Link href={`/l/${listing.slug}`}>
-                          <Eye className="size-4" />
-                          View
-                        </Link>
+                  ) : (
+                    <Button
+                      asChild
+                      variant="secondary"
+                      size="sm"
+                      className="min-h-10 bg-stone-950 text-white hover:bg-stone-800"
+                    >
+                      <Link href={`/dashboard/listings/${listing.id}`}>
+                        <Eye className="size-4" />
+                        Review
+                      </Link>
+                    </Button>
+                  )}
+                  {listing.status !== "published" ? (
+                    <form action={updateListingStatusAction.bind(null, listing.id, "published")}>
+                      <Button size="sm" type="submit" className="min-h-10 w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto">
+                        <Send className="size-4" />
+                        Publish
                       </Button>
-                    ) : (
-                      <Button asChild variant="secondary" size="sm" className="bg-stone-950 text-white hover:bg-stone-800">
-                        <Link href={`/dashboard/listings/${listing.id}`}>
-                          <Eye className="size-4" />
-                          Review
-                        </Link>
+                    </form>
+                  ) : (
+                    <form action={updateListingStatusAction.bind(null, listing.id, "unpublished")}>
+                      <Button size="sm" type="submit" variant="outline" className="min-h-10 w-full border-stone-200 bg-white text-stone-700 hover:bg-stone-100 sm:w-auto">
+                        <XCircle className="size-4" />
+                        Unpublish
                       </Button>
-                    )}
-                    {listing.status !== "published" ? (
-                      <form action={updateListingStatusAction.bind(null, listing.id, "published")}>
-                        <Button size="sm" type="submit" className="bg-emerald-600 text-white hover:bg-emerald-700">
-                          <Send className="size-4" />
-                          Publish
+                    </form>
+                  )}
+                  <form action={duplicateListingAction.bind(null, listing.id)}>
+                    <Button size="sm" type="submit" variant="outline" className="min-h-10 w-full border-stone-200 bg-white text-stone-700 hover:bg-stone-100 sm:w-auto">
+                      <Copy className="size-4" />
+                      Duplicate
+                    </Button>
+                  </form>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:justify-end">
+                  {listing.status !== "sold" && listing.status !== "rented" ? (
+                    listing.transactionType === "sale" ? (
+                      <form action={updateListingStatusAction.bind(null, listing.id, "sold")}>
+                        <Button size="sm" type="submit" variant="outline" className="min-h-10 w-full border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 sm:w-auto">
+                          <BadgeCheck className="size-4" />
+                          Mark sold
                         </Button>
                       </form>
                     ) : (
-                      <form action={updateListingStatusAction.bind(null, listing.id, "unpublished")}>
-                        <Button size="sm" type="submit" variant="outline" className="border-stone-200 bg-white text-stone-700 hover:bg-stone-100">
-                          <XCircle className="size-4" />
-                          Unpublish
+                      <form action={updateListingStatusAction.bind(null, listing.id, "rented")}>
+                        <Button size="sm" type="submit" variant="outline" className="min-h-10 w-full border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 sm:w-auto">
+                          <BadgeCheck className="size-4" />
+                          Mark rented
                         </Button>
                       </form>
-                    )}
-                    <form action={duplicateListingAction.bind(null, listing.id)}>
-                      <Button size="sm" type="submit" variant="outline" className="border-stone-200 bg-white text-stone-700 hover:bg-stone-100">
-                        <Copy className="size-4" />
-                        Duplicate
-                      </Button>
-                    </form>
-                    {listing.status !== "sold" && listing.status !== "rented" ? (
-                      <>
-                        {listing.transactionType === "sale" ? (
-                          <form action={updateListingStatusAction.bind(null, listing.id, "sold")}>
-                            <Button size="sm" type="submit" variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                              <BadgeCheck className="size-4" />
-                              Mark sold
-                            </Button>
-                          </form>
-                        ) : (
-                          <form action={updateListingStatusAction.bind(null, listing.id, "rented")}>
-                            <Button size="sm" type="submit" variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                              <BadgeCheck className="size-4" />
-                              Mark rented
-                            </Button>
-                          </form>
-                        )}
-                      </>
-                    ) : null}
-                    <form action={updateListingStatusAction.bind(null, listing.id, "archived")}>
-                      <Button size="sm" type="submit" variant="ghost" className="text-stone-500 hover:bg-stone-100 hover:text-stone-950">Archive</Button>
-                    </form>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                    )
+                  ) : null}
+                  <form action={updateListingStatusAction.bind(null, listing.id, "archived")}>
+                    <Button size="sm" type="submit" variant="ghost" className="min-h-10 w-full text-stone-500 hover:bg-stone-100 hover:text-stone-950 sm:w-auto">
+                      Archive
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
