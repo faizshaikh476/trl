@@ -14,6 +14,11 @@ export interface CustomerOperationsRepository {
   countActivities(): Promise<CustomerActivityCounts>;
   saveMessage(message: CustomerMessage): Promise<CustomerMessage>;
   getMessage(contactId: string, messageId: string): Promise<CustomerMessage | null>;
+  updateMessage(
+    contactId: string,
+    messageId: string,
+    patch: Partial<CustomerMessage>,
+  ): Promise<CustomerMessage>;
   updateMessageDelivery(
     providerMessageId: string,
     patch: Pick<CustomerMessage, "deliveryStatus" | "failureSummary">,

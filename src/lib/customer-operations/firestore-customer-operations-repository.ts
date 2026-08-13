@@ -112,6 +112,21 @@ export class FirestoreCustomerOperationsRepository implements CustomerOperations
     return snapshot.exists ? toMessage(snapshot.id, snapshot.data()) : null;
   }
 
+  async updateMessage(contactId: string, messageId: string, patch: Partial<CustomerMessage>) {
+    const ref = this.db.doc(
+      firestorePaths.customerMessage(contactId, messageDocumentId(messageId)),
+    );
+    const existing = await ref.get();
+    if (!existing.exists) throw new Error("Message not found.");
+    const allowedPatch: Partial<CustomerMessage> = {};
+    if (patch.providerMessageId !== undefined) allowedPatch.providerMessageId = patch.providerMessageId;
+    if (patch.deliveryStatus !== undefined) allowedPatch.deliveryStatus = patch.deliveryStatus;
+    if (patch.failureSummary !== undefined) allowedPatch.failureSummary = patch.failureSummary;
+    await ref.set(allowedPatch, { merge: true });
+    const updated = await ref.get();
+    return toMessage(updated.id, updated.data());
+  }
+
   async updateMessageDelivery(
     providerMessageId: string,
     patch: Pick<CustomerMessage, "deliveryStatus" | "failureSummary">,
