@@ -16,6 +16,7 @@ export interface WhatsAppIntakeSession {
   updatedAt: string;
   completedAt: string | null;
   collectionAcknowledgedAt: string | null;
+  expiresAt: string;
 }
 
 export interface WhatsAppIntakeSessionStore {
@@ -55,6 +56,7 @@ export class FirestoreWhatsAppIntakeSessionStore implements WhatsAppIntakeSessio
       updatedAt: now,
       completedAt: null,
       collectionAcknowledgedAt: null,
+      expiresAt: intakeExpiresAt(now),
     };
     await sessionRef(workspaceId, phone).set(session);
     return session;
@@ -83,6 +85,7 @@ export class FirestoreWhatsAppIntakeSessionStore implements WhatsAppIntakeSessio
               updatedAt: now,
               completedAt: null,
               collectionAcknowledgedAt: null,
+              expiresAt: intakeExpiresAt(now),
             };
       const hasContent = Boolean(text || message.media.length);
       const shouldAcknowledgeCollection =
@@ -94,6 +97,7 @@ export class FirestoreWhatsAppIntakeSessionStore implements WhatsAppIntakeSessio
         messages: text ? [...session.messages, text] : session.messages,
         media: [...session.media, ...message.media],
         updatedAt: now,
+        expiresAt: intakeExpiresAt(now),
         collectionAcknowledgedAt: shouldAcknowledgeCollection ? now : session.collectionAcknowledgedAt,
       };
 
@@ -103,10 +107,12 @@ export class FirestoreWhatsAppIntakeSessionStore implements WhatsAppIntakeSessio
   }
 
   async markProcessing(workspaceId: string, phone: string) {
+    const now = new Date().toISOString();
     await sessionRef(workspaceId, phone).set(
       {
         status: "processing",
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        expiresAt: intakeExpiresAt(now),
       },
       { merge: true },
     );
@@ -120,16 +126,23 @@ export class FirestoreWhatsAppIntakeSessionStore implements WhatsAppIntakeSessio
         listingId,
         updatedAt: now,
         completedAt: now,
+        messages: [],
+        media: [],
+        expiresAt: intakeExpiresAt(now),
       },
       { merge: true },
     );
   }
 
   async markCancelled(workspaceId: string, phone: string) {
+    const now = new Date().toISOString();
     await sessionRef(workspaceId, phone).set(
       {
         status: "cancelled",
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        messages: [],
+        media: [],
+        expiresAt: intakeExpiresAt(now),
       },
       { merge: true },
     );
@@ -160,7 +173,15 @@ function toSession(id: string, data: FirebaseFirestore.DocumentData | undefined)
     updatedAt: String(value.updatedAt ?? new Date().toISOString()),
     completedAt: typeof value.completedAt === "string" ? value.completedAt : null,
     collectionAcknowledgedAt: typeof value.collectionAcknowledgedAt === "string" ? value.collectionAcknowledgedAt : null,
+    expiresAt:
+      typeof value.expiresAt === "string"
+        ? value.expiresAt
+        : intakeExpiresAt(String(value.updatedAt ?? new Date().toISOString())),
   };
+}
+
+function intakeExpiresAt(timestamp: string) {
+  return new Date(Date.parse(timestamp) + 180 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function isSessionStatus(value: unknown): value is WhatsAppIntakeSessionStatus {

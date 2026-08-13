@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createWhatsAppProvider } from "@/lib/whatsapp/providers/provider-factory";
 import { whatsappService, type WhatsAppWebhookResult } from "@/lib/whatsapp/whatsapp-service";
-import type { WhatsAppProvider } from "@/lib/whatsapp/whatsapp-provider";
 import { brokerVerificationService } from "@/lib/claims/broker-verification-service";
 import { parseMetaDeliveryStatuses } from "@/lib/whatsapp/providers/meta-provider";
+import { firestoreWhatsAppBrokerWorkspaceService } from "@/lib/whatsapp/broker-workspace-service";
+import { WhatsAppMessageSender } from "@/lib/whatsapp/whatsapp-message-sender";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const provider = createWhatsAppProvider();
+    const sender = new WhatsAppMessageSender({ provider });
     const payload = await request.json();
     console.info("WhatsApp webhook received", summarizeWebhookPayload(payload));
     const deliveryStatuses = parseMetaDeliveryStatuses(payload);
@@ -42,10 +44,16 @@ export async function POST(request: Request) {
 
     if (process.env.WHATSAPP_AUTO_REPLY !== "false") {
       for (const item of results) {
-        if (item.reply && item.to) await sendWhatsAppResult(provider, item);
+        if (item.to && hasWhatsAppOutput(item)) {
+          const workspaceId = await firestoreWhatsAppBrokerWorkspaceService.resolveWorkspaceForPhone(item.to);
+          await sendWhatsAppResult(sender, workspaceId, item);
+        }
         if (item.followUp) {
           const followUp = await item.followUp();
-          await sendWhatsAppResult(provider, followUp);
+          if (followUp.to && hasWhatsAppOutput(followUp)) {
+            const workspaceId = await firestoreWhatsAppBrokerWorkspaceService.resolveWorkspaceForPhone(followUp.to);
+            await sendWhatsAppResult(sender, workspaceId, followUp);
+          }
         }
       }
     }
@@ -57,19 +65,46 @@ export async function POST(request: Request) {
   }
 }
 
-async function sendWhatsAppResult(provider: WhatsAppProvider, result: WhatsAppWebhookResult) {
+export function hasWhatsAppOutput(result: WhatsAppWebhookResult) {
+  return Boolean(result.reply || result.outboundMessages?.length);
+}
+
+export async function sendWhatsAppResult(
+  sender: Pick<WhatsAppMessageSender, "sendText" | "sendMedia">,
+  workspaceId: string,
+  result: WhatsAppWebhookResult,
+) {
   if (!result.to) return;
 
   if (!result.outboundMessages?.length) {
-    if (result.reply) await provider.sendTextMessage(result.to, result.reply);
+    if (result.reply) {
+      await sender.sendText({
+        phone: result.to,
+        workspaceId,
+        text: result.reply,
+        senderType: "automation",
+      });
+    }
     return;
   }
 
   for (const message of result.outboundMessages) {
     if (message.type === "text") {
-      await provider.sendTextMessage(result.to, message.text);
+      await sender.sendText({
+        phone: result.to,
+        workspaceId,
+        text: message.text,
+        senderType: "automation",
+      });
     } else {
-      await provider.sendMediaMessage(result.to, message.mediaUrl, message.caption);
+      await sender.sendMedia({
+        phone: result.to,
+        workspaceId,
+        mediaUrl: message.mediaUrl,
+        caption: message.caption,
+        mediaType: "image",
+        senderType: "automation",
+      });
     }
   }
 }

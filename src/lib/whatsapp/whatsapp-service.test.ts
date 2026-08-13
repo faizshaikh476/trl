@@ -7,6 +7,13 @@ import type { Listing } from "@/types/domain";
 import { MockWhatsAppProvider } from "./providers/mock-provider";
 import { WhatsAppService } from "./whatsapp-service";
 
+vi.mock("@/lib/customer-operations/customer-operations-service", () => ({
+  customerOperationsService: {
+    recordInbound: vi.fn(),
+    recordMediaReceived: vi.fn(),
+  },
+}));
+
 const extraction: ListingExtraction = {
   title: "Commercial Office for Sale in One Place, Pune",
   transactionType: "sale",
@@ -796,6 +803,50 @@ describe("WhatsAppService intake cues", () => {
     expect(imageOnlyDone.status).toBe("collecting");
     expect(imageOnlyDone.reply).toContain("Please share the property details");
     expect(imageOnlyDone.reply).not.toContain("clean language");
+  });
+});
+
+describe("WhatsAppService customer retention", () => {
+  it("retains text and media counts before mutating the intake session", async () => {
+    const calls: string[] = [];
+    const baseStore = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: {
+        ...baseStore,
+        async appendMessage(workspaceId, phone, message) {
+          calls.push("append-intake");
+          return baseStore.appendMessage(workspaceId, phone, message);
+        },
+      },
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      customerOperations: {
+        async recordInbound() {
+          calls.push("retain-text");
+        },
+        async recordMediaReceived() {
+          calls.push("retain-media-count");
+        },
+      },
+    });
+
+    await service.handleWebhook(
+      {
+        id: "wamid.retention.1",
+        from: "918265048678",
+        text: "3 BHK in Pune",
+        media: [
+          {
+            id: "provider-media-secret",
+            url: "https://example.com/private.jpg",
+            type: "image",
+          },
+        ],
+      },
+      new MockWhatsAppProvider(),
+    );
+
+    expect(calls).toEqual(["retain-text", "retain-media-count", "append-intake"]);
   });
 });
 

@@ -5,6 +5,7 @@ import { createListingActivationToken } from "@/lib/billing/listing-activation-l
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { formatRupees } from "@/lib/format";
+import { customerOperationsService } from "@/lib/customer-operations/customer-operations-service";
 import { ownerClaimService } from "@/lib/claims/owner-claim-service";
 import { listingService } from "@/lib/listings/listing-service";
 import { getPublicBaseUrl } from "@/lib/claims/owner-claim-service";
@@ -62,6 +63,10 @@ interface WhatsAppServiceDependencies {
   saveMediaAssets: typeof saveIncomingMediaAssets;
   brokerWorkspaceService: WhatsAppBrokerWorkspaceService;
   revalidateListing: typeof revalidatePublicListing;
+  customerOperations: Pick<
+    typeof customerOperationsService,
+    "recordInbound" | "recordMediaReceived"
+  >;
 }
 
 export interface WhatsAppProcessedMessageStore {
@@ -92,6 +97,7 @@ export class WhatsAppService {
       saveMediaAssets: dependencies.saveMediaAssets ?? saveIncomingMediaAssets,
       brokerWorkspaceService: dependencies.brokerWorkspaceService ?? firestoreWhatsAppBrokerWorkspaceService,
       revalidateListing: dependencies.revalidateListing ?? revalidatePublicListing,
+      customerOperations: dependencies.customerOperations ?? customerOperationsService,
     };
   }
 
@@ -120,6 +126,25 @@ export class WhatsAppService {
     const workspaceId = await this.dependencies.brokerWorkspaceService.resolveWorkspaceForPhone(parsedMessage.from);
     const message = { ...parsedMessage, workspaceId };
     const text = message.text.trim();
+    if (text) {
+      await this.dependencies.customerOperations.recordInbound({
+        phone: message.from,
+        workspaceId,
+        providerMessageId: message.id ?? null,
+        text,
+      });
+    }
+    if (message.media.length) {
+      await this.dependencies.customerOperations.recordMediaReceived({
+        phone: message.from,
+        workspaceId,
+        counts: {
+          image: message.media.filter((item) => item.type === "image").length,
+          video: message.media.filter((item) => item.type === "video").length,
+          document: message.media.filter((item) => item.type === "document").length,
+        },
+      });
+    }
     if (message.id) {
       const isFirstDelivery = await this.dependencies.processedMessageStore.markProcessing(
         message.workspaceId,
