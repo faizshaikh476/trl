@@ -40,7 +40,11 @@ export function CustomerConversation({
       <div className="border-b border-white/10 bg-slate-950/40 px-5 py-3 text-xs text-slate-400">
         {retentionLabel}. Media is not retained in chat.
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-5">
+      <div
+        role="log"
+        aria-label="Conversation history"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5"
+      >
         {messages.length ? messages.map((message) => (
           <div key={message.id} className={message.direction === "outbound" ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}>
             <div className={message.direction === "outbound" ? "rounded-2xl rounded-br-sm bg-cyan-300 px-4 py-3 text-slate-950" : "rounded-2xl rounded-bl-sm bg-white/10 px-4 py-3 text-slate-100"}>
@@ -57,7 +61,11 @@ export function CustomerConversation({
           </div>
         )) : <p className="py-12 text-center text-sm text-slate-500">No retained conversation text yet.</p>}
       </div>
-      <div className="border-t border-white/10 p-4">
+      <div
+        role="region"
+        aria-label="Conversation reply"
+        className="shrink-0 border-t border-white/10 p-4"
+      >
         {insideReplyWindow ? (
           <form action={replyAction} className="space-y-3">
             <input type="hidden" name="workspaceId" value={workspaceId} />
