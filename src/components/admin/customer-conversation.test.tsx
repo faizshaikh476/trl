@@ -25,9 +25,14 @@ describe("CustomerConversation", () => {
     expect(screen.getByRole("log", { name: "Conversation history" })).toHaveClass(
       "min-h-0",
       "overflow-y-auto",
+      "overscroll-contain",
     );
     expect(screen.getByRole("region", { name: "Conversation reply" })).toHaveClass(
       "shrink-0",
+    );
+    expect(screen.getByRole("log", { name: "Conversation history" }).parentElement).toHaveClass(
+      "h-full",
+      "overflow-hidden",
     );
   });
 });

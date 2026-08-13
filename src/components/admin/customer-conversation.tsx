@@ -36,14 +36,14 @@ export function CustomerConversation({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="border-b border-white/10 bg-slate-950/40 px-5 py-3 text-xs text-slate-400">
         {retentionLabel}. Media is not retained in chat.
       </div>
       <div
         role="log"
         aria-label="Conversation history"
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-5"
       >
         {messages.length ? messages.map((message) => (
           <div key={message.id} className={message.direction === "outbound" ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}>

@@ -22,17 +22,17 @@ export function CustomerDetailDrawer({ detail, closeHref, plans, initialTab = "o
   const activity = detail.activity;
   return (
     <Sheet open onOpenChange={(open) => { if (!open) router.push(closeHref); }}>
-      <SheetContent side="right" className="w-[min(94vw,52rem)] border-cyan-300/10 bg-slate-950 text-white sm:max-w-none" showCloseButton>
-        <SheetHeader className="border-b border-white/10 px-5 py-4">
+      <SheetContent side="right" className="h-dvh w-[min(94vw,52rem)] gap-0 overflow-hidden border-cyan-300/10 bg-slate-950 text-white sm:max-w-none" showCloseButton>
+        <SheetHeader className="shrink-0 border-b border-white/10 px-5 py-4">
           <div className="flex flex-wrap items-center gap-2 pr-10"><SheetTitle className="text-xl text-white">{activity.displayName}</SheetTitle><Badge className="bg-cyan-300 text-slate-950">{activity.classification}</Badge><Badge variant="secondary">{activity.stage.replaceAll('_',' ')}</Badge></div>
           <SheetDescription className="text-slate-400">+{activity.phone} · {activity.city || 'City not set'} · {activity.workspaceId}</SheetDescription>
         </SheetHeader>
-        <Tabs defaultValue={initialTab} className="min-h-0 flex-1 gap-0">
+        <Tabs defaultValue={initialTab} className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden">
           <TabsList variant="line" className="mx-5 mt-2 h-10 w-auto justify-start overflow-x-auto border-b border-white/10 text-slate-400">
             <TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="conversation">Conversation</TabsTrigger><TabsTrigger value="activity">Activity</TabsTrigger><TabsTrigger value="manage">Manage</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="overflow-y-auto p-5"><Overview detail={detail} /></TabsContent>
-          <TabsContent value="conversation" className="min-h-0 overflow-hidden data-active:flex"><CustomerConversation contactId={activity.id} workspaceId={activity.workspaceId} messages={detail.messages} insideReplyWindow={detail.insideReplyWindow} retentionLabel={detail.retentionLabel} /></TabsContent>
+          <TabsContent value="conversation" className="h-full min-h-0 overflow-hidden data-active:flex"><CustomerConversation contactId={activity.id} workspaceId={activity.workspaceId} messages={detail.messages} insideReplyWindow={detail.insideReplyWindow} retentionLabel={detail.retentionLabel} /></TabsContent>
           <TabsContent value="activity" className="overflow-y-auto p-5"><ActivityTimeline events={detail.events} /></TabsContent>
           <TabsContent value="manage" className="overflow-y-auto p-5"><Manage detail={detail} plans={plans} /></TabsContent>
         </Tabs>
