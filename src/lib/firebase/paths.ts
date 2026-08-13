@@ -33,6 +33,14 @@ export const firestorePaths = {
     `workspaces/${workspaceId}/creditLedger`,
   workspaceCreditEntry: (workspaceId: string, entryId: string) =>
     `workspaces/${workspaceId}/creditLedger/${entryId}`,
+  customerActivities: () => "customerActivities",
+  customerActivity: (contactId: string) => `customerActivities/${contactId}`,
+  customerMessages: (contactId: string) =>
+    `customerActivities/${contactId}/customerMessages`,
+  customerMessage: (contactId: string, messageId: string) =>
+    `customerActivities/${contactId}/customerMessages/${messageId}`,
+  customerEvents: (contactId: string) =>
+    `customerActivities/${contactId}/customerEvents`,
   publicListing: (slug: string) => `publicListingIndex/${slug}`,
   ownerClaimToken: (token: string) => `ownerClaimTokens/${token}`,
   platformAdmin: (userId: string) => `platformAdmins/${userId}`,

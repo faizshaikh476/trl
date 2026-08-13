@@ -27,6 +27,110 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "classification",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastActivityAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "id",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTokens",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "lastActivityAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "id",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "firstSeenAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "latestPurchaseAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "followUpAt", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "stage", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "planId", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "paymentState", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "walletState", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -39,6 +143,18 @@
           "queryScope": "COLLECTION_GROUP"
         }
       ]
+    },
+    {
+      "collectionGroup": "customerMessages",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "intakeSessions",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

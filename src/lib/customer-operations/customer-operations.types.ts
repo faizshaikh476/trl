@@ -73,6 +73,7 @@ export interface CustomerActivity {
   effectiveCredits: number;
   planId: string;
   paymentState: CustomerPaymentState;
+  latestPurchaseAt: string | null;
   listingCounts: {
     total: number;
     ready: number;
@@ -89,6 +90,43 @@ export interface CustomerActivity {
   followUpAt: string | null;
   resolution: "open" | "resolved";
   historyRetainedFrom: string;
+}
+
+export type CustomerDirectoryTab = "customers" | "prospects" | "all";
+export type CustomerDirectorySort =
+  | "last_activity_desc"
+  | "first_seen_desc"
+  | "latest_purchase_desc"
+  | "follow_up_asc";
+
+export interface CustomerDirectoryFilters {
+  stage?: CustomerJourneyStage;
+  planId?: string;
+  paymentState?: CustomerPaymentState;
+  walletState?: WalletState;
+  followUpState?: "due" | "scheduled" | "none" | "resolved";
+}
+
+export interface CustomerDirectoryQuery {
+  tab: CustomerDirectoryTab;
+  sort: CustomerDirectorySort;
+  pageSize: number;
+  cursor: string | null;
+  filters: CustomerDirectoryFilters;
+  searchToken: string | null;
+}
+
+export interface CustomerDirectoryPage {
+  items: CustomerActivity[];
+  nextCursor: string | null;
+  previousCursor: string | null;
+}
+
+export interface CustomerActivityCounts {
+  all: number;
+  customers: number;
+  prospects: number;
+  needsAttention: number;
 }
 
 export interface CustomerMessage {
