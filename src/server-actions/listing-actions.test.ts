@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
-import { reactivateListingAction } from "./listing-actions";
+import { reactivateListingAction, updateListingStatusAction } from "./listing-actions";
+
+const projectionMocks = vi.hoisted(() => ({ project: vi.fn() }));
 
 class RedirectError extends Error {
   constructor(readonly url: string) {
@@ -31,7 +33,7 @@ vi.mock("@/lib/auth/current-user", () => ({
 }));
 
 vi.mock("@/lib/billing/billing-service", () => ({
-  billingService: {},
+  billingService: { assertCanPublish: vi.fn() },
   ListingPlanLimitError: class ListingPlanLimitError extends Error {},
 }));
 
@@ -51,6 +53,10 @@ vi.mock("@/lib/listings/listing-service", () => ({
     findAnyById: vi.fn(),
     updateStatusInWorkspace: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/customer-operations/customer-activity-projection", () => ({
+  customerActivityProjector: { project: projectionMocks.project },
 }));
 
 vi.mock("@/lib/public/public-listing-cache", () => ({
@@ -83,6 +89,7 @@ describe("reactivateListingAction", () => {
       createdAt: "2026-07-09T10:00:00.000Z",
       updatedAt: "2026-07-09T10:00:00.000Z",
     });
+    projectionMocks.project.mockResolvedValue(undefined);
   });
 
   it("redirects gracefully if the wallet becomes inactive during reactivation", async () => {
@@ -90,6 +97,35 @@ describe("reactivateListingAction", () => {
 
     await expect(reactivateListingAction("listing_1")).rejects.toMatchObject({
       url: "/dashboard/listings/listing_1?error=reactivation-wallet",
+    });
+  });
+
+  it("projects listing status and refreshed counts after a successful mutation", async () => {
+    vi.mocked(listingService.findByWorkspaceId).mockResolvedValue({
+      id: "listing_1",
+      workspaceId: "workspace_1",
+      slug: "garden-flat",
+      status: "ready_to_publish",
+    } as Awaited<ReturnType<typeof listingService.findByWorkspaceId>>);
+    vi.mocked(listingService.updateStatusInWorkspace).mockResolvedValue({
+      id: "listing_1",
+      workspaceId: "workspace_1",
+      slug: "garden-flat",
+      status: "published",
+    } as Awaited<ReturnType<typeof listingService.updateStatusInWorkspace>>);
+
+    await updateListingStatusAction("listing_1", "published");
+
+    expect(projectionMocks.project).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      authenticatedUserId: "user_1",
+      latestActivityLabel: "Listing published",
+      event: {
+        type: "listing_published",
+        label: "Listing published",
+        idempotencyKey: "listing_1:published",
+        listingId: "listing_1",
+      },
     });
   });
 });

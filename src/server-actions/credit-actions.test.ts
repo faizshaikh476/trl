@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getCurrentAdmin: vi.fn(),
   grantCredits: vi.fn(),
+  project: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -20,12 +21,17 @@ vi.mock("@/lib/billing/credit-wallet-service", () => ({
   },
 }));
 
+vi.mock("@/lib/customer-operations/customer-activity-projection", () => ({
+  customerActivityProjector: { project: mocks.project },
+}));
+
 import { grantPromotionalCreditsAction } from "./credit-actions";
 
 beforeEach(() => {
   mocks.getCurrentAdmin.mockReset();
   mocks.grantCredits.mockReset();
   mocks.revalidatePath.mockReset();
+  mocks.project.mockReset().mockResolvedValue(undefined);
   mocks.getCurrentAdmin.mockResolvedValue({
     id: "admin_1",
     name: "Admin",
@@ -57,6 +63,16 @@ describe("grantPromotionalCreditsAction", () => {
       reason: "Launch promo",
     });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/admin/workspaces");
+    expect(mocks.project).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      latestActivityLabel: "5 promotional credits granted",
+      event: {
+        type: "credits_granted",
+        label: "5 promotional credits granted",
+        idempotencyKey: "admin:admin_1:workspace_1:grant-a",
+        sourceId: "admin_1",
+      },
+    });
   });
 
   it("allows two separate grants with the same quantity and reason when idempotency keys differ", async () => {

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreditPurchase, Plan } from "@/types/domain";
 import {
   PaymentService,
@@ -210,6 +210,9 @@ describe("PaymentService", () => {
   let activationPublishCalls: number;
   let assignedWorkspacePlan: string;
   let planAssignmentCount: number;
+  let recordDomainEvent: ReturnType<typeof vi.fn>;
+  let refreshActivity: ReturnType<typeof vi.fn>;
+  let sendText: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     now = new Date("2026-07-10T12:00:00.000Z");
@@ -222,6 +225,9 @@ describe("PaymentService", () => {
     activationPublishCalls = 0;
     assignedWorkspacePlan = "free";
     planAssignmentCount = 0;
+    recordDomainEvent = vi.fn().mockResolvedValue(undefined);
+    refreshActivity = vi.fn().mockResolvedValue(undefined);
+    sendText = vi.fn().mockResolvedValue({ id: "wamid.activation" });
     service = new PaymentService({
       store,
       orders,
@@ -249,14 +255,36 @@ describe("PaymentService", () => {
             createdAt: now.toISOString(),
           };
         },
+        getWallet: async () => ({
+          availableCredits: 50,
+          validUntil: "2026-08-24T12:00:00.000Z",
+          lastPurchaseId: "purchase_1",
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        }),
       },
       workspaces: {
         updatePlan: async (_workspaceId, planId) => {
           assignedWorkspacePlan = planId;
           planAssignmentCount += 1;
         },
+        findById: async (workspaceId) =>
+          workspaceId === "workspace_1"
+            ? ({
+                id: workspaceId,
+                name: "Monesh Kumar",
+                contactName: "Monesh Kumar",
+                contactPhone: "919822052388",
+                contactEmail: "monesh@example.com",
+                city: "Pune",
+                planId: assignedWorkspacePlan,
+              } as never)
+            : null,
       },
       listings: {
+        listByWorkspace: async () => [
+          { id: "listing_1", status: activationListingStatus } as never,
+        ],
         findByWorkspaceId: async (workspaceId, listingId) =>
           workspaceId === "workspace_1" && listingId === "listing_1"
             ? ({
@@ -282,7 +310,11 @@ describe("PaymentService", () => {
         },
       },
       revalidateListing: () => undefined,
-      sendActivationMessage: async () => undefined,
+      whatsAppSender: { sendText: sendText as never },
+      customerOperations: {
+        recordDomainEvent: recordDomainEvent as never,
+        refreshActivity: refreshActivity as never,
+      },
       now: () => now,
     });
   });
@@ -463,6 +495,69 @@ describe("PaymentService", () => {
 
     expect(assignedWorkspacePlan).toBe("growth");
     expect(planAssignmentCount).toBe(1);
+  });
+
+  it("projects a paid purchase only after credits and the workspace plan succeed", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "project-paid",
+      activationPhone: "919822052388",
+    });
+    recordDomainEvent.mockClear();
+    refreshActivity.mockClear();
+    const verification = {
+      razorpay_order_id: order.providerOrderId!,
+      razorpay_payment_id: "pay_projected",
+      razorpay_signature: checkoutSignature(order.providerOrderId!, "pay_projected"),
+    };
+
+    await service.verifyCheckout(verification);
+    await service.verifyCheckout(verification);
+
+    expect(recordDomainEvent).toHaveBeenCalledTimes(1);
+    expect(recordDomainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "purchase_paid",
+        workspaceId: "workspace_1",
+        idempotencyKey: order.purchaseId,
+      }),
+    );
+    expect(refreshActivity).toHaveBeenCalledTimes(1);
+    expect(refreshActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "workspace_1",
+        phone: "919822052388",
+        paymentState: "paid",
+        planId: "growth",
+        hasPaidPurchase: true,
+      }),
+    );
+    expect(planAssignmentCount).toBe(1);
+    expect(grants).toHaveLength(1);
+  });
+
+  it("sends activation confirmation through retained WhatsApp delivery", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "retained-activation",
+      activationListingId: "listing_1",
+      activationPhone: "919822052388",
+    });
+
+    await service.verifyCheckout({
+      razorpay_order_id: order.providerOrderId!,
+      razorpay_payment_id: "pay_retained",
+      razorpay_signature: checkoutSignature(order.providerOrderId!, "pay_retained"),
+    });
+
+    expect(sendText).toHaveBeenCalledWith({
+      phone: "919822052388",
+      workspaceId: "workspace_1",
+      text: expect.stringContaining("/l/garden-flat"),
+      senderType: "automation",
+    });
   });
 
   it("publishes an activation listing exactly once after verified payment", async () => {
@@ -735,6 +830,16 @@ describe("PaymentService", () => {
       providerEventIds: ["evt_failed_1"],
     });
     expect(grants).toHaveLength(0);
+    expect(recordDomainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "purchase_failed",
+        workspaceId: "workspace_1",
+        idempotencyKey: order.purchaseId,
+      }),
+    );
+    expect(refreshActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentState: "failed", needsAttention: true }),
+    );
   });
 
   it("records processed refunds without issuing another credit grant", async () => {
@@ -777,6 +882,13 @@ describe("PaymentService", () => {
       providerEventIds: ["evt_refund_1"],
     });
     expect(grants).toHaveLength(1);
+    expect(recordDomainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "purchase_refunded",
+        workspaceId: "workspace_1",
+        idempotencyKey: order.purchaseId,
+      }),
+    );
   });
 
   function checkoutSignature(orderId: string, paymentId: string) {

@@ -6,6 +6,7 @@ import { verifyFirebaseIdToken } from "@/lib/auth/firebase-token";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { ownerClaimService, type OwnerClaimLookup } from "@/lib/claims/owner-claim-service";
+import { customerActivityProjector } from "@/lib/customer-operations/customer-activity-projection";
 import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
 import type { OwnerClaimToken } from "@/types/domain";
 import type { WhatsAppProvider } from "@/lib/whatsapp/whatsapp-provider";
@@ -184,6 +185,22 @@ export class BrokerVerificationService {
       "otpAudit.verifiedByUid": verifiedAudit.verifiedByUid,
       updatedAt: new Date().toISOString(),
     });
+    try {
+      await customerActivityProjector.project({
+        workspaceId: lookup.token.workspaceId,
+        authenticatedUserId: verifiedToken.uid,
+        latestActivityLabel: "Broker account claimed",
+        event: {
+          type: "account_claimed",
+          label: "Broker account claimed",
+          idempotencyKey: `${token}:${verifiedToken.uid}`,
+          sourceId: verifiedToken.uid,
+          listingId: lookup.listing.id,
+        },
+      });
+    } catch (error) {
+      console.error("Unable to project claimed broker account", error);
+    }
     revalidatePublicListing(lookup.listing);
 
     return {

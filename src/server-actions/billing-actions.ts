@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
 import { billingService, parsePlanInput, planIdFromName } from "@/lib/billing/billing-service";
+import { customerActivityProjector } from "@/lib/customer-operations/customer-activity-projection";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 
 export async function createPlanAction(formData: FormData) {
@@ -30,13 +31,28 @@ export async function deletePlanAction(planId: string, formData: FormData) {
 }
 
 export async function assignWorkspacePlanAction(workspaceId: string, formData: FormData) {
-  await getCurrentAdmin();
+  const admin = await getCurrentAdmin();
   const planId = String(formData.get("planId") ?? "").trim();
   const activePlans = await billingService.listActivePlans();
   if (!activePlans.some((plan) => plan.id === planId)) {
     throw new Error("Choose an active plan before saving.");
   }
   await workspaceService.updatePlan(workspaceId, planId);
+  try {
+    await customerActivityProjector.project({
+      workspaceId,
+      planId,
+      latestActivityLabel: `Plan changed to ${planId}`,
+      event: {
+        type: "plan_changed",
+        label: `Plan changed to ${planId}`,
+        idempotencyKey: `${workspaceId}:${planId}`,
+        sourceId: admin.id,
+      },
+    });
+  } catch (error) {
+    console.error("Unable to project workspace plan change", error);
+  }
   revalidateAdminBilling();
 }
 

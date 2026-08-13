@@ -7,6 +7,7 @@ import { creditWalletService, NoListingCreditsError } from "@/lib/billing/credit
 import { billingService, ListingPlanLimitError } from "@/lib/billing/billing-service";
 import { manualListingSchema } from "@/lib/listings/listing.schema";
 import { listingService } from "@/lib/listings/listing-service";
+import { customerActivityProjector } from "@/lib/customer-operations/customer-activity-projection";
 import {
   revalidatePublicListing,
   revalidatePublicListingBySlug,
@@ -132,6 +133,7 @@ export async function updateListingStatusAction(listingId: string, status: Listi
     await assertCanPublishOrRedirect(listing, `/dashboard/listings/${listingId}?error=listing-limit`);
   }
   const updated = await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
+  await projectListingStatus(updated, user.id);
   revalidatePublicListing(updated);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
@@ -173,6 +175,7 @@ export async function reactivateListingAction(listingId: string) {
     }
     throw error;
   }
+  await projectListingStatus(updated, user.id);
   revalidatePublicListing(updated);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/listings");
@@ -197,6 +200,7 @@ export async function updateListingStatusInWorkspaceAction(
     );
   }
   const updated = await listingService.updateStatusInWorkspace(listing.workspaceId, listingId, status);
+  await projectListingStatus(updated, user.id);
   revalidatePublicListing(updated);
   revalidatePath("/admin/listings");
   revalidatePath(`/admin/listings/${listingId}`);
@@ -212,6 +216,38 @@ async function assertCanPublishOrRedirect(listing: Awaited<ReturnType<typeof get
     if (error instanceof ListingPlanLimitError) redirect(redirectTo);
     throw error;
   }
+}
+
+async function projectListingStatus(
+  listing: NonNullable<Awaited<ReturnType<typeof listingService.findByWorkspaceId>>>,
+  authenticatedUserId: string,
+) {
+  const event = listingStatusEvent(listing.status);
+  try {
+    await customerActivityProjector.project({
+      workspaceId: listing.workspaceId,
+      authenticatedUserId,
+      latestActivityLabel: event.label,
+      event: {
+        ...event,
+        idempotencyKey: `${listing.id}:${listing.status}`,
+        listingId: listing.id,
+      },
+    });
+  } catch (error) {
+    console.error("Unable to project listing status", error);
+  }
+}
+
+function listingStatusEvent(status: ListingStatus): {
+  type: "listing_saved" | "listing_published" | "listing_archived";
+  label: string;
+} {
+  if (status === "published") return { type: "listing_published", label: "Listing published" };
+  if (["archived", "sold", "rented", "expired", "unpublished"].includes(status)) {
+    return { type: "listing_archived", label: `Listing ${status.replaceAll("_", " ")}` };
+  }
+  return { type: "listing_saved", label: `Listing ${status.replaceAll("_", " ")}` };
 }
 
 export async function deleteListingInWorkspaceAction(

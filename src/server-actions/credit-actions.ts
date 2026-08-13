@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
 import { creditWalletService } from "@/lib/billing/credit-wallet-service";
+import { customerActivityProjector } from "@/lib/customer-operations/customer-activity-projection";
 
 const PROMOTIONAL_CREDIT_VALIDITY_DAYS = 30;
 
@@ -25,18 +26,34 @@ export async function grantPromotionalCreditsAction(workspaceId: string, formDat
     throw new Error("Confirm the promotional credit grant before submitting.");
   }
 
+  const sourceId = promotionalGrantSourceId({
+    adminId: admin.id,
+    workspaceId: normalizedWorkspaceId,
+    idempotencyKey,
+  });
   await creditWalletService.grantCredits({
     workspaceId: normalizedWorkspaceId,
     quantity,
     validityDays: PROMOTIONAL_CREDIT_VALIDITY_DAYS,
     sourceType: "promotion",
-    sourceId: promotionalGrantSourceId({
-      adminId: admin.id,
-      workspaceId: normalizedWorkspaceId,
-      idempotencyKey,
-    }),
+    sourceId,
     reason,
   });
+  const label = `${quantity} promotional credit${quantity === 1 ? "" : "s"} granted`;
+  try {
+    await customerActivityProjector.project({
+      workspaceId: normalizedWorkspaceId,
+      latestActivityLabel: label,
+      event: {
+        type: "credits_granted",
+        label,
+        idempotencyKey: sourceId,
+        sourceId: admin.id,
+      },
+    });
+  } catch (error) {
+    console.error("Unable to project promotional credit grant", error);
+  }
 
   revalidatePath("/admin/workspaces");
   revalidatePath("/dashboard/listings");

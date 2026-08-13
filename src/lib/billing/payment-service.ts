@@ -3,13 +3,15 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { billingService } from "@/lib/billing/billing-service";
 import { creditWalletService } from "@/lib/billing/credit-wallet-service";
 import { getPublicBaseUrl } from "@/lib/claims/owner-claim-service";
+import { customerOperationsService } from "@/lib/customer-operations/customer-operations-service";
+import { contactIdForPhone } from "@/lib/customer-operations/customer-state";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { listingService } from "@/lib/listings/listing-service";
 import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
-import { createWhatsAppProvider } from "@/lib/whatsapp/providers/provider-factory";
+import { whatsAppMessageSender } from "@/lib/whatsapp/whatsapp-message-sender";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
-import type { CreditLedgerEntry, CreditPurchase, Listing, Plan } from "@/types/domain";
+import type { CreditLedgerEntry, CreditPurchase, CreditWallet, Listing, Plan, Workspace } from "@/types/domain";
 import { getRazorpayOrderClient } from "./razorpay-client";
 
 export interface PaymentOrderClient {
@@ -83,13 +85,22 @@ export interface PaymentServiceDependencies {
       sourceId: string;
       sourceType: "purchase";
     }): Promise<CreditLedgerEntry>;
+    getWallet(workspaceId: string): Promise<CreditWallet | null>;
   };
   workspaces: {
     updatePlan(workspaceId: string, planId: string): Promise<unknown>;
+    findById(workspaceId: string): Promise<Workspace | null>;
   };
-  listings: Pick<typeof listingService, "findByWorkspaceId" | "updateStatusInWorkspace">;
+  listings: Pick<
+    typeof listingService,
+    "findByWorkspaceId" | "listByWorkspace" | "updateStatusInWorkspace"
+  >;
   revalidateListing(listing: Listing): void;
-  sendActivationMessage(input: { phone: string; listing: Listing }): Promise<void>;
+  whatsAppSender: Pick<typeof whatsAppMessageSender, "sendText">;
+  customerOperations: Pick<
+    typeof customerOperationsService,
+    "recordDomainEvent" | "refreshActivity"
+  >;
   now?: () => Date;
 }
 
@@ -177,6 +188,8 @@ export class PaymentService {
       order.id,
       this.now().toISOString(),
     );
+
+    await this.projectPurchaseOutcome(updated, "purchase_created", "pending");
 
     return orderResponse(updated, plan, this.dependencies.publicKey);
   }
@@ -295,13 +308,13 @@ export class PaymentService {
     const payment = paymentEntity(event);
     const orderId = requiredString(payment.order_id, "payment.order_id");
 
-    return this.dependencies.store.runTransaction(async (transaction) => {
+    const result = await this.dependencies.store.runTransaction(async (transaction) => {
       const purchase = await transaction.findPurchaseByProviderOrderId(orderId);
-      if (!purchase) return { processed: false, duplicate: false };
+      if (!purchase) return { processed: false, duplicate: false, purchase: null };
       if (purchase.providerEventIds.includes(event.id)) {
-        return { processed: false, duplicate: true };
+        return { processed: false, duplicate: true, purchase };
       }
-      await transaction.markFailed({
+      const failed = await transaction.markFailed({
         purchaseId: purchase.id,
         providerPaymentId: typeof payment.id === "string" ? payment.id : null,
         providerEventId: event.id,
@@ -311,8 +324,12 @@ export class PaymentService {
           "Razorpay reported payment failure.",
         failedAt: this.now().toISOString(),
       });
-      return { processed: true, duplicate: false };
+      return { processed: true, duplicate: false, purchase: failed };
     });
+    if (result.processed && result.purchase) {
+      await this.projectPurchaseOutcome(result.purchase, "purchase_failed", "failed");
+    }
+    return { processed: result.processed, duplicate: result.duplicate };
   }
 
   private async processProcessedRefund(event: RazorpayWebhookEvent) {
@@ -321,20 +338,24 @@ export class PaymentService {
     const orderId = requiredString(payment.order_id, "payment.order_id");
     const refundId = requiredString(refund.id, "refund.id");
 
-    return this.dependencies.store.runTransaction(async (transaction) => {
+    const result = await this.dependencies.store.runTransaction(async (transaction) => {
       const purchase = await transaction.findPurchaseByProviderOrderId(orderId);
-      if (!purchase) return { processed: false, duplicate: false };
+      if (!purchase) return { processed: false, duplicate: false, purchase: null };
       if (purchase.providerEventIds.includes(event.id)) {
-        return { processed: false, duplicate: true };
+        return { processed: false, duplicate: true, purchase };
       }
-      await transaction.markRefunded({
+      const refunded = await transaction.markRefunded({
         purchaseId: purchase.id,
         providerRefundId: refundId,
         providerEventId: event.id,
         refundedAt: this.now().toISOString(),
       });
-      return { processed: true, duplicate: false };
+      return { processed: true, duplicate: false, purchase: refunded };
     });
+    if (result.processed && result.purchase) {
+      await this.projectPurchaseOutcome(result.purchase, "purchase_refunded", "refunded");
+    }
+    return { processed: result.processed, duplicate: result.duplicate };
   }
 
   private grantPurchaseCredits(purchase: CreditPurchase) {
@@ -359,7 +380,11 @@ export class PaymentService {
   }
 
   private async completePaidPurchase(purchase: CreditPurchase) {
+    const newlyCredited = !purchase.creditGrantLedgerEntryId;
     const credited = await this.ensurePurchaseCreditsGranted(purchase);
+    if (newlyCredited) {
+      await this.projectPurchaseOutcome(credited, "purchase_paid", "paid");
+    }
     if (!credited.activationListingId || credited.activationCompletedAt) return credited;
 
     try {
@@ -385,9 +410,11 @@ export class PaymentService {
       });
       if (completed.activationPhone) {
         try {
-          await this.dependencies.sendActivationMessage({
+          await this.dependencies.whatsAppSender.sendText({
             phone: completed.activationPhone,
-            listing: published,
+            workspaceId: completed.workspaceId,
+            text: `✅ Payment received. Your listing is live:\n${getPublicBaseUrl()}/l/${published.slug}`,
+            senderType: "automation",
           });
         } catch (error) {
           console.error("Unable to send listing activation confirmation", error);
@@ -401,6 +428,67 @@ export class PaymentService {
         activationError: error instanceof Error ? error.message : "Listing activation failed.",
         updatedAt: this.now().toISOString(),
       });
+    }
+  }
+
+  private async projectPurchaseOutcome(
+    purchase: CreditPurchase,
+    eventType: "purchase_created" | "purchase_paid" | "purchase_failed" | "purchase_refunded",
+    paymentState: "pending" | "paid" | "failed" | "refunded",
+  ) {
+    try {
+      const [workspace, wallet, listings] = await Promise.all([
+        this.dependencies.workspaces.findById(purchase.workspaceId),
+        this.dependencies.wallet.getWallet(purchase.workspaceId),
+        this.dependencies.listings.listByWorkspace(purchase.workspaceId),
+      ]);
+      const phone = purchase.activationPhone?.trim() || workspace?.contactPhone?.trim();
+      if (!workspace || !phone) return;
+      const listingCounts = {
+        total: listings.length,
+        ready: listings.filter((listing) => listing.status === "ready_to_publish").length,
+        published: listings.filter((listing) => listing.status === "published").length,
+      };
+      const occurredAt = purchase.paidAt ?? purchase.refundedAt ?? purchase.updatedAt;
+      const label = {
+        purchase_created: "Credit purchase started",
+        purchase_paid: "Credit purchase paid",
+        purchase_failed: "Credit purchase failed",
+        purchase_refunded: "Credit purchase refunded",
+      }[eventType];
+      await this.dependencies.customerOperations.recordDomainEvent({
+        contactId: contactIdForPhone(phone),
+        workspaceId: purchase.workspaceId,
+        type: eventType,
+        label,
+        idempotencyKey: purchase.id,
+        sourceId: purchase.id,
+        occurredAt,
+      });
+      await this.dependencies.customerOperations.refreshActivity({
+        phone,
+        workspaceId: purchase.workspaceId,
+        displayName: workspace.contactName || workspace.name,
+        email: workspace.contactEmail,
+        city: workspace.city,
+        hasPaidPurchase: Boolean(purchase.paidAt),
+        hasAuthenticatedUser: false,
+        hasIntake: listingCounts.total > 0,
+        hasReadyListing: listingCounts.ready > 0,
+        needsAttention: paymentState === "failed",
+        paymentState,
+        planId: purchase.planId,
+        latestPurchaseAt: purchase.paidAt ?? purchase.updatedAt,
+        wallet,
+        effectiveCredits: wallet?.availableCredits ?? 0,
+        listingCounts,
+        latestActivityLabel: label,
+        occurredAt,
+        searchValues: [workspace.name, workspace.contactName, workspace.contactPhone],
+        authenticatedUserId: null,
+      });
+    } catch (error) {
+      console.error("Unable to project customer payment outcome", error);
     }
   }
 }
@@ -888,10 +976,6 @@ export const paymentService = new PaymentService({
   workspaces: workspaceService,
   listings: listingService,
   revalidateListing: revalidatePublicListing,
-  sendActivationMessage: async ({ phone, listing }) => {
-    await createWhatsAppProvider().sendTextMessage(
-      phone,
-      `✅ Payment received. Your listing is live:\n${getPublicBaseUrl()}/l/${listing.slug}`,
-    );
-  },
+  whatsAppSender: whatsAppMessageSender,
+  customerOperations: customerOperationsService,
 });
