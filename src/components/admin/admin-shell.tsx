@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { SignOutForm } from "@/components/auth/sign-out-form";
+import { MobileSideNavigation } from "@/components/navigation/mobile-side-navigation";
 import { getPlatformBranding } from "@/lib/platform/branding";
 import { cn } from "@/lib/utils";
 
@@ -46,23 +47,7 @@ export async function AdminShell({ children, active }: { children: React.ReactNo
             </div>
           </Link>
           <nav className="mt-8 space-y-1">
-            {adminNav.map((item) => {
-              const Icon = item.icon;
-              const selected = active === item.label;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 transition hover:bg-cyan-300/10 hover:text-white",
-                    selected && "bg-cyan-300 text-slate-950 hover:bg-cyan-300 hover:text-slate-950",
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
+            <AdminNavigationLinks active={active} />
           </nav>
           <div className="mt-auto space-y-3">
             <div className="rounded-lg border border-cyan-300/10 bg-cyan-300/5 p-4">
@@ -83,13 +68,53 @@ export async function AdminShell({ children, active }: { children: React.ReactNo
           <BrandMark logoUrl={branding.logoUrl} shortName={branding.shortName} compact />
           Super Admin
         </Link>
-        <SignOutForm compact />
+        <MobileSideNavigation
+          ariaLabel="Super Admin navigation"
+          brand={
+            <div className="flex items-center gap-3">
+              <BrandMark logoUrl={branding.logoUrl} shortName={branding.shortName} />
+              <div>
+                <p className="font-semibold text-white">{branding.brandName}</p>
+                <p className="text-xs text-cyan-200/70">Super Admin console</p>
+              </div>
+            </div>
+          }
+          navigation={<div className="space-y-1"><AdminNavigationLinks active={active} /></div>}
+          footer={
+            <div className="space-y-3">
+              <p className="px-2 text-xs text-slate-400">Signed in to Super Admin console</p>
+              <SignOutForm />
+            </div>
+          }
+          contentClassName="border-cyan-300/10 bg-slate-950 text-white"
+        />
       </header>
       <main className="min-w-0 lg:pl-72">
         <div className="mx-auto min-w-0 w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </main>
     </div>
   );
+}
+
+function AdminNavigationLinks({ active }: { active?: string }) {
+  return adminNav.map((item) => {
+    const Icon = item.icon;
+    const selected = active === item.label;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        aria-current={selected ? "page" : undefined}
+        className={cn(
+          "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 transition hover:bg-cyan-300/10 hover:text-white",
+          selected && "bg-cyan-300 text-slate-950 hover:bg-cyan-300 hover:text-slate-950",
+        )}
+      >
+        <Icon className="size-4" />
+        {item.label}
+      </Link>
+    );
+  });
 }
 
 function BrandMark({
