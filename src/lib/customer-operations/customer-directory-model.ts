@@ -5,6 +5,8 @@ import type {
   CustomerPaymentState,
   WalletState,
 } from "./customer-operations.types";
+import type { CustomerDetail } from "./customer-operations-service";
+import { isInsideCustomerServiceWindow } from "./customer-state";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -75,6 +77,36 @@ export function toDirectoryRow(activity: CustomerActivity) {
   };
 }
 
+export function toCustomerDetailModel(detail: CustomerDetail, now = new Date()) {
+  const activity = detail.activity;
+  return {
+    activity,
+    retentionLabel: `History retained from ${formatDate(activity.historyRetainedFrom)}`,
+    insideReplyWindow: isInsideCustomerServiceWindow(activity.lastInboundAt, now),
+    messages: detail.messages.map((message) => ({
+      id: message.id,
+      contactId: message.contactId,
+      workspaceId: message.workspaceId,
+      direction: message.direction,
+      senderType: message.senderType,
+      text: message.text,
+      deliveryStatus: message.deliveryStatus,
+      deliveryLabel: title(message.deliveryStatus),
+      failureSummary: message.failureSummary,
+      createdAt: message.createdAt,
+      createdLabel: formatDateTime(message.createdAt),
+    })),
+    events: detail.events.map((event) => ({
+      id: event.id,
+      type: event.type,
+      label: event.label,
+      listingId: event.listingId,
+      occurredAt: event.occurredAt,
+      occurredLabel: formatDateTime(event.occurredAt),
+    })),
+  };
+}
+
 function creditsLabel(activity: CustomerActivity) {
   if (activity.walletState === "never_funded") return "Never funded";
   if (activity.walletState === "expired") return "Expired · 0 available";
@@ -88,6 +120,17 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(new Date(parsed));
+}
+
+function formatDate(value: string) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "unknown";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
     timeZone: "Asia/Kolkata",
   }).format(new Date(parsed));
 }

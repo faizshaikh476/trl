@@ -1,15 +1,19 @@
 import { AdminSectionPage } from "@/components/admin/admin-section-page";
 import { CustomerDirectory } from "@/components/admin/customer-directory";
+import { CustomerDetailDrawer } from "@/components/admin/customer-detail-drawer";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
+import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
 import { customerOperationsService } from "@/lib/customer-operations/customer-operations-service";
-import { parseDirectoryQuery } from "@/lib/customer-operations/customer-directory-model";
+import { parseDirectoryQuery, toCustomerDetailModel } from "@/lib/customer-operations/customer-directory-model";
 import type { CustomerActivityCounts, CustomerDirectoryPage } from "@/lib/customer-operations/customer-operations.types";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function AdminWorkspacesPage({ searchParams }: { searchParams: SearchParams }) {
   await getCurrentAdmin();
-  const query = parseDirectoryQuery(await searchParams);
+  const rawSearchParams = await searchParams;
+  const query = parseDirectoryQuery(rawSearchParams);
+  const contactId = first(rawSearchParams.contact);
   let page: CustomerDirectoryPage = { items: [], nextCursor: null, previousCursor: null };
   let counts: CustomerActivityCounts = { all: 0, customers: 0, prospects: 0, needsAttention: 0 };
   let error: string | null = null;
@@ -22,6 +26,12 @@ export default async function AdminWorkspacesPage({ searchParams }: { searchPara
     console.error("Unable to load customer operations directory", cause);
     error = "Retry the page. If this continues, verify that the customer activity indexes are deployed.";
   }
+  const [selectedDetail, plans] = await Promise.all([
+    contactId?.startsWith("contact_")
+      ? customerOperationsService.getCustomerDetail(contactId)
+      : Promise.resolve(null),
+    billingService.listActivePlans(),
+  ]);
 
   return (
     <AdminSectionPage
@@ -35,6 +45,32 @@ export default async function AdminWorkspacesPage({ searchParams }: { searchPara
       ]}
     >
       <CustomerDirectory query={query} page={page} counts={counts} error={error} />
+      {selectedDetail ? (
+        <CustomerDetailDrawer
+          detail={toCustomerDetailModel(selectedDetail)}
+          closeHref={closeHref(rawSearchParams)}
+          plans={plans.map((plan) => ({
+            id: plan.id,
+            name: plan.name,
+            listingCredits: plan.listingCredits,
+            priceLabel: formatPlanPrice(plan),
+          }))}
+        />
+      ) : null}
     </AdminSectionPage>
   );
+}
+
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function closeHref(searchParams: Record<string, string | string[] | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (key === "contact" || value === undefined) continue;
+    for (const item of Array.isArray(value) ? value : [value]) params.append(key, item);
+  }
+  const query = params.toString();
+  return query ? `/admin/workspaces?${query}` : "/admin/workspaces";
 }

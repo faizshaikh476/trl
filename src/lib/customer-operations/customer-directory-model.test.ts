@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CustomerActivity } from "./customer-operations.types";
-import { parseDirectoryQuery, toDirectoryRow } from "./customer-directory-model";
+import { parseDirectoryQuery, toCustomerDetailModel, toDirectoryRow } from "./customer-directory-model";
 
 describe("customer directory model", () => {
   it("defaults to customers, newest activity, and 25 rows", () => {
@@ -54,6 +54,25 @@ describe("customer directory model", () => {
     );
     expect(toDirectoryRow(activity({ walletState: "expired", effectiveCredits: 0 })).creditsLabel)
       .toBe("Expired · 0 available");
+  });
+
+  it("shows the retention boundary and text-only messages", () => {
+    const model = toCustomerDetailModel({
+      activity: activity(),
+      messages: [{
+        id: "message_1", contactId: "contact_919876543210", workspaceId: "workspace_1",
+        direction: "inbound", senderType: "customer", text: "Need help paying",
+        providerMessageId: "wamid.1", deliveryStatus: "read", failureSummary: null,
+        createdAt: "2026-08-13T09:00:00.000Z", expiresAt: "2027-02-09T09:00:00.000Z",
+      }],
+      events: [],
+    });
+
+    expect(model.retentionLabel).toBe("History retained from 13 Aug 2026");
+    expect(model.messages[0]).toEqual(expect.objectContaining({
+      text: "Need help paying", deliveryLabel: "Read",
+    }));
+    expect(JSON.stringify(model.messages)).not.toMatch(/mediaUrl|providerMediaId/);
   });
 });
 
