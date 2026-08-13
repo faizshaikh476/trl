@@ -554,6 +554,39 @@ describe("WhatsAppService intake cues", () => {
     expect(session?.messages).toEqual([]);
   });
 
+  it("accepts property brochures that use repeated spaces for visual alignment", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+      billingService: createUnlimitedBillingService(),
+    });
+    const provider = new MockWhatsAppProvider();
+    const phone = "919845009322";
+
+    await service.handleWebhook(
+      {
+        from: phone,
+        text: [
+          "#86 FLATS FOR SALE",
+          "East By Road.40x60                East Main Door",
+          "Super built-up area 2200ft 3bhk with two attached and one common bathroom",
+          "2 CAR PARKING",
+          "BBMP A katha",
+          "Each flat PRICE: RS.2.00cr",
+        ].join("\n"),
+      },
+      provider,
+    );
+
+    const done = await service.handleWebhook({ text: "DONE", from: phone }, provider);
+
+    expect(done.status).toBe("processing_started");
+    expect(done.reply).toContain("build the page");
+    expect(done.followUp).toBeTypeOf("function");
+  });
+
   it("does not run AI when abusive or inappropriate text is sent as listing content", async () => {
     const store = createMemorySessionStore();
     const ai = { extractListing: vi.fn() };

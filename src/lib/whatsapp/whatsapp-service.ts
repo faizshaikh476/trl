@@ -520,7 +520,7 @@ type IntakeGateResult =
 const blockedLanguagePattern =
   /\b(?:idiots?|stupid|fuck(?:ing)?|shit|bitch|bastard|chutiya|madarchod|bhenchod|randi|harami|sex|porn|escort|drug|cocaine|weed|ganja)\b/i;
 const commonJunkPattern = /^(?:test|testing|asdf|qwerty|ok|okay|hello|hi|hii|done|random|sample)[\s.!😂🤣👍🙏-]*$/i;
-const repeatedCharacterPattern = /(.)\1{6,}/;
+const repeatedVisibleCharacterPattern = /([^\s])\1{6,}/;
 const propertySignalPatterns = [
   /\b(?:bhk|rk|bed(?:room)?s?|bath(?:room)?s?|flat|apartment|office|shop|showroom|villa|bungalow|plot|land|commercial|residential|studio|penthouse|duplex|row house)\b/i,
   /\b(?:rent|rental|lease|leased|pre-leased|sale|sell|resale|buy)\b/i,
@@ -553,7 +553,7 @@ function validateIntakeContent(text: string, imageCount: number): IntakeGateResu
   if (!normalizedText && imageCount > 0) return { ok: false, reason: "insufficient_property_details" };
   if (!normalizedText) return { ok: false, reason: "insufficient_property_details" };
   if (commonJunkPattern.test(normalizedText)) return { ok: false, reason: "insufficient_property_details" };
-  if (repeatedCharacterPattern.test(normalizedText)) return { ok: false, reason: "insufficient_property_details" };
+  if (repeatedVisibleCharacterPattern.test(normalizedText)) return { ok: false, reason: "insufficient_property_details" };
 
   const alphaNumericCount = (normalizedText.match(/[a-z0-9]/gi) ?? []).length;
   const symbolCount = (normalizedText.match(/[^\s\p{L}\p{N}]/gu) ?? []).length;
