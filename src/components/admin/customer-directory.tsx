@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ArrowRight, Search, UsersRound } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, MessageCircle, Search, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { toDirectoryRow } from "@/lib/customer-operations/customer-directory-model";
+import {
+  customerDirectoryHref,
+  toDirectoryRow,
+} from "@/lib/customer-operations/customer-directory-model";
 import type {
   CustomerActivityCounts,
   CustomerDirectoryPage,
@@ -13,14 +16,16 @@ export function CustomerDirectory({
   query,
   page,
   counts,
+  planNamesById,
   error = null,
 }: {
   query: CustomerDirectoryQuery;
   page: CustomerDirectoryPage;
   counts: CustomerActivityCounts;
+  planNamesById: Readonly<Record<string, string>>;
   error?: string | null;
 }) {
-  const rows = page.items.map(toDirectoryRow);
+  const rows = page.items.map((activity) => toDirectoryRow(activity, planNamesById));
   const filtered = Boolean(
     query.searchToken || Object.keys(query.filters).length || query.tab !== "customers",
   );
@@ -43,7 +48,7 @@ export function CustomerDirectory({
             ] as const).map(([tab, label, count]) => (
               <Link
                 key={tab}
-                href={directoryHref(query, { tab, cursor: null })}
+                href={customerDirectoryHref(query, { tab, cursor: null })}
                 className={
                   query.tab === tab
                     ? "rounded-md bg-cyan-300 px-3 py-2 text-sm font-medium text-slate-950"
@@ -83,10 +88,10 @@ export function CustomerDirectory({
         </div>
       ) : rows.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-left text-sm">
+          <table className="w-full min-w-[1280px] text-left text-sm">
             <thead className="bg-white/[0.035] text-xs uppercase tracking-wide text-slate-500">
               <tr>
-                {['Customer','Journey','Plan & payment','Credits','Listings','Latest activity','Follow-up'].map((heading) => (
+                {['Customer','Journey','Plan & payment','Credits','Listings','Latest activity','Follow-up','Actions'].map((heading) => (
                   <th key={heading} className="px-5 py-3 font-medium">{heading}</th>
                 ))}
               </tr>
@@ -95,7 +100,7 @@ export function CustomerDirectory({
               {rows.map((row, index) => (
                 <tr key={row.id} className="border-t border-cyan-300/10 transition-colors hover:bg-cyan-300/[0.045]">
                   <td className="p-0">
-                    <Link href={directoryHref(query, { contact: row.id })} className="block px-5 py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300">
+                    <Link href={customerDirectoryHref(query, { contact: row.id })} className="block px-5 py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300">
                       <p className="font-medium text-slate-100">{row.name}</p>
                       <p className="mt-1 text-xs text-slate-400">+{row.phone} · {row.city}</p>
                       <p className="mt-1 text-[11px] text-slate-600">#{index + 1}</p>
@@ -107,6 +112,13 @@ export function CustomerDirectory({
                   <td className="px-5 py-4 text-slate-300">{row.listingsLabel}</td>
                   <td className="px-5 py-4"><p className="max-w-52 truncate text-slate-200">{row.latestActivityLabel}</p><time title={exactDate(row.lastActivityAt)} dateTime={row.lastActivityAt} className="mt-1 block text-xs text-slate-500">{relativeDate(row.lastActivityAt)}</time></td>
                   <td className="px-5 py-4"><span className={row.followUpAt ? "text-cyan-200" : "text-slate-500"}>{row.followUpLabel}</span></td>
+                  <td className="px-5 py-4">
+                    <Button asChild size="sm" variant="outline" className="border-cyan-300/20 bg-transparent text-cyan-100 hover:bg-cyan-300/10 hover:text-white">
+                      <Link href={customerDirectoryHref(query, { contact: row.id, view: "conversation" })}>
+                        <MessageCircle className="size-4" />Chat
+                      </Link>
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -123,8 +135,8 @@ export function CustomerDirectory({
       <div className="flex items-center justify-between border-t border-cyan-300/10 px-5 py-4">
         <p className="text-sm text-slate-500">Showing up to {query.pageSize} records</p>
         <div className="flex gap-2">
-          {query.cursor ? <Button asChild variant="outline" className="border-white/10 bg-transparent text-white hover:bg-white/5"><Link href={directoryHref(query, { cursor: page.previousCursor })}><ArrowLeft className="size-4" />Previous</Link></Button> : null}
-          {page.nextCursor ? <Button asChild variant="outline" className="border-white/10 bg-transparent text-white hover:bg-white/5"><Link href={directoryHref(query, { cursor: page.nextCursor })}>Next<ArrowRight className="size-4" /></Link></Button> : null}
+          {query.cursor ? <Button asChild variant="outline" className="border-white/10 bg-transparent text-white hover:bg-white/5"><Link href={customerDirectoryHref(query, { cursor: page.previousCursor })}><ArrowLeft className="size-4" />Previous</Link></Button> : null}
+          {page.nextCursor ? <Button asChild variant="outline" className="border-white/10 bg-transparent text-white hover:bg-white/5"><Link href={customerDirectoryHref(query, { cursor: page.nextCursor })}>Next<ArrowRight className="size-4" /></Link></Button> : null}
         </div>
       </div>
     </section>
@@ -133,23 +145,6 @@ export function CustomerDirectory({
 
 function FilterSelect({ name, label, value, options }: { name: string; label: string; value?: string; options: ReadonlyArray<readonly [string, string]> }) {
   return <label><span className="sr-only">{label}</span><select name={name} defaultValue={value ?? ""} className="h-10 w-full rounded-md border border-white/10 bg-slate-950/70 px-3 text-sm text-white"><option value="">All {label.toLowerCase()}</option>{options.map(([option, text]) => <option key={option} value={option}>{text}</option>)}</select></label>;
-}
-
-function directoryHref(query: CustomerDirectoryQuery, overrides: { tab?: CustomerDirectoryQuery['tab']; cursor?: string | null; contact?: string }) {
-  const params = new URLSearchParams();
-  params.set('tab', overrides.tab ?? query.tab);
-  if (query.searchToken) params.set('q', query.searchToken);
-  if (query.filters.stage) params.set('stage', query.filters.stage);
-  if (query.filters.paymentState) params.set('payment', query.filters.paymentState);
-  if (query.filters.walletState) params.set('wallet', query.filters.walletState);
-  if (query.filters.followUpState) params.set('followUp', query.filters.followUpState);
-  if (query.filters.planId) params.set('plan', query.filters.planId);
-  if (query.sort !== 'last_activity_desc') params.set('sort', query.sort);
-  if (query.pageSize !== 25) params.set('pageSize', String(query.pageSize));
-  const cursor = overrides.cursor === undefined ? query.cursor : overrides.cursor;
-  if (cursor) params.set('cursor', cursor);
-  if (overrides.contact) params.set('contact', overrides.contact);
-  return `/admin/workspaces?${params}`;
 }
 
 function journeyTone(stage: string) {

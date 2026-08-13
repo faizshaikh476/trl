@@ -17,7 +17,7 @@ export type ReturnTypeOfCustomerDetailModel = ReturnType<typeof toCustomerDetail
 type PlanOption = { id: string; name: string; listingCredits: number; priceLabel: string };
 const initialState: CustomerOperationsActionState = { ok: false, message: "" };
 
-export function CustomerDetailDrawer({ detail, closeHref, plans }: { detail: ReturnTypeOfCustomerDetailModel; closeHref: string; plans: PlanOption[] }) {
+export function CustomerDetailDrawer({ detail, closeHref, plans, initialTab = "overview" }: { detail: ReturnTypeOfCustomerDetailModel; closeHref: string; plans: PlanOption[]; initialTab?: "overview" | "conversation" }) {
   const router = useRouter();
   const activity = detail.activity;
   return (
@@ -27,7 +27,7 @@ export function CustomerDetailDrawer({ detail, closeHref, plans }: { detail: Ret
           <div className="flex flex-wrap items-center gap-2 pr-10"><SheetTitle className="text-xl text-white">{activity.displayName}</SheetTitle><Badge className="bg-cyan-300 text-slate-950">{activity.classification}</Badge><Badge variant="secondary">{activity.stage.replaceAll('_',' ')}</Badge></div>
           <SheetDescription className="text-slate-400">+{activity.phone} · {activity.city || 'City not set'} · {activity.workspaceId}</SheetDescription>
         </SheetHeader>
-        <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
+        <Tabs defaultValue={initialTab} className="min-h-0 flex-1 gap-0">
           <TabsList variant="line" className="mx-5 mt-2 h-10 w-auto justify-start overflow-x-auto border-b border-white/10 text-slate-400">
             <TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="conversation">Conversation</TabsTrigger><TabsTrigger value="activity">Activity</TabsTrigger><TabsTrigger value="manage">Manage</TabsTrigger>
           </TabsList>
@@ -43,7 +43,7 @@ export function CustomerDetailDrawer({ detail, closeHref, plans }: { detail: Ret
 
 function Overview({ detail }: { detail: ReturnTypeOfCustomerDetailModel }) {
   const a = detail.activity;
-  const facts = [['Plan', a.planId],['Payment',a.paymentState],['Credits',`${a.effectiveCredits} (${a.walletState.replaceAll('_',' ')})`],['Listings',`${a.listingCounts.published} live · ${a.listingCounts.ready} ready · ${a.listingCounts.total} total`],['Email',a.email || 'Not set'],['History',detail.retentionLabel]];
+  const facts = [['Plan', detail.planLabel],['Payment',a.paymentState],['Credits',`${a.effectiveCredits} (${a.walletState.replaceAll('_',' ')})`],['Listings',`${a.listingCounts.published} live · ${a.listingCounts.ready} ready · ${a.listingCounts.total} total`],['Email',a.email || 'Not set'],['History',detail.retentionLabel]];
   return <div className="grid gap-px overflow-hidden rounded-lg border border-white/10 bg-white/10 sm:grid-cols-2">{facts.map(([label,value]) => <div key={label} className="bg-slate-950 p-4"><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 text-sm text-slate-100">{value}</p></div>)}</div>;
 }
 

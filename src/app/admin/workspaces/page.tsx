@@ -14,6 +14,7 @@ export default async function AdminWorkspacesPage({ searchParams }: { searchPara
   const rawSearchParams = await searchParams;
   const query = parseDirectoryQuery(rawSearchParams);
   const contactId = first(rawSearchParams.contact);
+  const initialTab = first(rawSearchParams.view) === "conversation" ? "conversation" : "overview";
   let page: CustomerDirectoryPage = { items: [], nextCursor: null, previousCursor: null };
   let counts: CustomerActivityCounts = { all: 0, customers: 0, prospects: 0, needsAttention: 0 };
   let error: string | null = null;
@@ -30,8 +31,10 @@ export default async function AdminWorkspacesPage({ searchParams }: { searchPara
     contactId?.startsWith("contact_")
       ? customerOperationsService.getCustomerDetail(contactId)
       : Promise.resolve(null),
-    billingService.listActivePlans(),
+    billingService.listPlans(),
   ]);
+  const planNamesById = Object.fromEntries(plans.map((plan) => [plan.id, plan.name]));
+  const activePlans = plans.filter((plan) => plan.status === "active");
 
   return (
     <AdminSectionPage
@@ -44,12 +47,13 @@ export default async function AdminWorkspacesPage({ searchParams }: { searchPara
         { title: "Needs attention", description: "Failed payments and customer journeys requiring follow-up.", status: String(counts.needsAttention) },
       ]}
     >
-      <CustomerDirectory query={query} page={page} counts={counts} error={error} />
+      <CustomerDirectory query={query} page={page} counts={counts} planNamesById={planNamesById} error={error} />
       {selectedDetail ? (
         <CustomerDetailDrawer
-          detail={toCustomerDetailModel(selectedDetail)}
+          detail={toCustomerDetailModel(selectedDetail, planNamesById)}
           closeHref={closeHref(rawSearchParams)}
-          plans={plans.map((plan) => ({
+          initialTab={initialTab}
+          plans={activePlans.map((plan) => ({
             id: plan.id,
             name: plan.name,
             listingCredits: plan.listingCredits,
@@ -68,7 +72,7 @@ function first(value: string | string[] | undefined) {
 function closeHref(searchParams: Record<string, string | string[] | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(searchParams)) {
-    if (key === "contact" || value === undefined) continue;
+    if (key === "contact" || key === "view" || value === undefined) continue;
     for (const item of Array.isArray(value) ? value : [value]) params.append(key, item);
   }
   const query = params.toString();

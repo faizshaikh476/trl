@@ -58,7 +58,36 @@ export function parseDirectoryQuery(searchParams: SearchParams): CustomerDirecto
   };
 }
 
-export function toDirectoryRow(activity: CustomerActivity) {
+export function customerDirectoryHref(
+  query: CustomerDirectoryQuery,
+  overrides: {
+    tab?: CustomerDirectoryQuery["tab"];
+    cursor?: string | null;
+    contact?: string;
+    view?: "conversation";
+  },
+) {
+  const params = new URLSearchParams();
+  params.set("tab", overrides.tab ?? query.tab);
+  if (query.searchToken) params.set("q", query.searchToken);
+  if (query.filters.stage) params.set("stage", query.filters.stage);
+  if (query.filters.paymentState) params.set("payment", query.filters.paymentState);
+  if (query.filters.walletState) params.set("wallet", query.filters.walletState);
+  if (query.filters.followUpState) params.set("followUp", query.filters.followUpState);
+  if (query.filters.planId) params.set("plan", query.filters.planId);
+  if (query.sort !== "last_activity_desc") params.set("sort", query.sort);
+  if (query.pageSize !== 25) params.set("pageSize", String(query.pageSize));
+  const cursor = overrides.cursor === undefined ? query.cursor : overrides.cursor;
+  if (cursor) params.set("cursor", cursor);
+  if (overrides.contact) params.set("contact", overrides.contact);
+  if (overrides.view) params.set("view", overrides.view);
+  return `/admin/workspaces?${params}`;
+}
+
+export function toDirectoryRow(
+  activity: CustomerActivity,
+  planNamesById: Readonly<Record<string, string>> = {},
+) {
   return {
     id: activity.id,
     name: activity.displayName || `Broker ${activity.phone.slice(-4)}`,
@@ -66,7 +95,7 @@ export function toDirectoryRow(activity: CustomerActivity) {
     city: activity.city || "City not set",
     classificationLabel: title(activity.classification),
     stageLabel: title(activity.stage),
-    planLabel: title(activity.planId),
+    planLabel: planNamesById[activity.planId] ?? title(activity.planId),
     paymentLabel: title(activity.paymentState),
     creditsLabel: creditsLabel(activity),
     listingsLabel: `${activity.listingCounts.published} live · ${activity.listingCounts.ready} ready · ${activity.listingCounts.total} total`,
@@ -77,10 +106,15 @@ export function toDirectoryRow(activity: CustomerActivity) {
   };
 }
 
-export function toCustomerDetailModel(detail: CustomerDetail, now = new Date()) {
+export function toCustomerDetailModel(
+  detail: CustomerDetail,
+  planNamesById: Readonly<Record<string, string>> = {},
+  now = new Date(),
+) {
   const activity = detail.activity;
   return {
     activity,
+    planLabel: planNamesById[activity.planId] ?? title(activity.planId),
     retentionLabel: `History retained from ${formatDate(activity.historyRetainedFrom)}`,
     insideReplyWindow: isInsideCustomerServiceWindow(activity.lastInboundAt, now),
     messages: detail.messages.map((message) => ({
