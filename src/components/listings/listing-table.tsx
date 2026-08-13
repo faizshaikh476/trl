@@ -16,20 +16,19 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  listingStatusPresentation,
+  prepareListingsForTable,
+  type ListingFilters,
+} from "@/components/listings/listing-table-model";
 import { formatRupees } from "@/lib/format";
 import { mediaService } from "@/lib/media/media-service";
+import { cn } from "@/lib/utils";
 import {
   duplicateListingAction,
   updateListingStatusAction,
 } from "@/server-actions/listing-actions";
 import type { Listing, ListingStatus, MediaAsset } from "@/types/domain";
-
-type ListingFilters = {
-  q?: string;
-  status?: string;
-  transaction?: string;
-  quality?: string;
-};
 
 const statusOptions: Array<{ label: string; value: ListingStatus }> = [
   { label: "Published", value: "published" },
@@ -72,14 +71,14 @@ export async function ListingTable({
     );
   }
 
+  const filteredListings = prepareListingsForTable(listings, filters);
   const heroEntries = await Promise.all(
-    listings.map(
+    filteredListings.map(
       async (listing) =>
         [listing.id, await mediaService.heroForListing(listing.workspaceId, listing.id)] as const,
     ),
   );
   const heroes = new Map<string, MediaAsset | null>(heroEntries);
-  const filteredListings = filterListings(listings, filters);
   const hasFilters = Boolean(filters.q || filters.status || filters.transaction || filters.quality);
 
   return (
@@ -158,6 +157,7 @@ export async function ListingTable({
 
       {filteredListings.map((listing) => {
         const hero = heroes.get(listing.id);
+        const presentation = listingStatusPresentation(listing.status);
         const statusTone =
           listing.status === "published"
             ? "default"
@@ -168,7 +168,14 @@ export async function ListingTable({
         return (
           <article
             key={listing.id}
-            className="overflow-hidden rounded-[1.5rem] border border-stone-200 bg-white shadow-sm shadow-stone-200/60 transition hover:-translate-y-0.5 hover:shadow-md"
+            className={cn(
+              "overflow-hidden rounded-[1.5rem] border border-stone-200 shadow-sm shadow-stone-200/60 transition hover:-translate-y-0.5 hover:shadow-md",
+              presentation.tone === "published"
+                ? "border-l-4 border-l-emerald-500 bg-white"
+                : presentation.tone === "ready"
+                  ? "border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/40"
+                  : "bg-white",
+            )}
           >
             <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_23rem]">
               <div className="flex min-w-0 gap-4">
@@ -187,7 +194,14 @@ export async function ListingTable({
                 )}
                 <div className="min-w-0 flex-1 py-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={statusTone} className="capitalize">
+                    <Badge
+                      variant={statusTone}
+                      className={cn(
+                        "capitalize",
+                        presentation.tone === "ready" &&
+                          "border border-amber-200 bg-amber-100 text-amber-900",
+                      )}
+                    >
                       {listing.status.replaceAll("_", " ")}
                     </Badge>
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800">
@@ -201,6 +215,18 @@ export async function ListingTable({
                   <p className="mt-1 line-clamp-2 max-w-3xl text-sm leading-6 text-stone-500">
                     {listing.location}
                   </p>
+                  {presentation.hint ? (
+                    <p
+                      className={cn(
+                        "mt-1 text-xs font-medium",
+                        presentation.tone === "published"
+                          ? "text-emerald-700"
+                          : "text-amber-800",
+                      )}
+                    >
+                      {presentation.hint}
+                    </p>
+                  ) : null}
                   <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-stone-600">
                     <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
                       <ShieldCheck className="size-3.5 text-emerald-700" />
@@ -306,30 +332,4 @@ export async function ListingTable({
       })}
     </div>
   );
-}
-
-function filterListings(listings: Listing[], filters: ListingFilters) {
-  const q = filters.q?.trim().toLowerCase();
-  return listings.filter((listing) => {
-    if (q) {
-      const haystack = [
-        listing.title,
-        listing.location,
-        listing.locality,
-        listing.societyName,
-        listing.city,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-
-    if (filters.status && listing.status !== filters.status) return false;
-    if (filters.transaction && listing.transactionType !== filters.transaction) return false;
-    if (filters.quality === "strong" && listing.qualityScore < 75) return false;
-    if (filters.quality === "review" && listing.qualityScore >= 75) return false;
-
-    return true;
-  });
 }
