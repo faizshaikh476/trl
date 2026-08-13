@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.stubEnv("WHATSAPP_DEFAULT_WORKSPACE_ID", "workspace_live");
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("MetaWhatsAppProvider", () => {
   it("parses text messages from Meta webhook payloads", async () => {
@@ -184,5 +188,34 @@ describe("MetaWhatsAppProvider", () => {
         error: { code: 131026, title: "Message undeliverable" },
       },
     ]);
+  });
+
+  it("sends an approved follow-up template using Meta's template payload", async () => {
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "phone_number_1");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token_1");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ messages: [{ id: "wamid.template.1" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { MetaWhatsAppProvider } = await import("./meta-provider");
+
+    const result = await new MetaWhatsAppProvider().sendTemplateMessage("919876543210", {
+      name: "admin_follow_up",
+      languageCode: "en",
+    });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: "919876543210",
+      type: "template",
+      template: {
+        name: "admin_follow_up",
+        language: { code: "en" },
+      },
+    });
+    expect(result).toEqual({ id: "wamid.template.1", status: "sent" });
   });
 });

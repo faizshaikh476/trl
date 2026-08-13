@@ -35,4 +35,8 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
   async sendInteractiveButtons() {
     return { id: `wamock_buttons_${Date.now()}`, status: "mocked" as const };
   }
+
+  async sendTemplateMessage() {
+    return { id: `wamock_template_${Date.now()}`, status: "mocked" as const };
+  }
 }

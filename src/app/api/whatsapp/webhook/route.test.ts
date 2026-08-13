@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WhatsAppWebhookResult } from "@/lib/whatsapp/whatsapp-service";
-import { hasWhatsAppOutput, sendWhatsAppResult } from "./route";
+import { fanOutDeliveryStatuses, hasWhatsAppOutput, sendWhatsAppResult } from "./route";
 
 describe("WhatsApp webhook outbound retention boundary", () => {
   it("recognizes outbound messages even when the reply field is empty", () => {
@@ -56,5 +56,30 @@ describe("WhatsApp webhook outbound retention boundary", () => {
         senderType: "automation",
       },
     ]);
+  });
+
+  it("updates both OTP audit and retained conversation delivery state", async () => {
+    const updates: string[] = [];
+    const statuses = [
+      {
+        messageId: "wamid.failed.1",
+        status: "failed" as const,
+        occurredAt: "2026-08-13T10:00:00.000Z",
+        error: { code: 131026, title: "Message undeliverable" },
+      },
+    ];
+
+    await fanOutDeliveryStatuses(
+      statuses,
+      { async recordDeliveryStatuses() { updates.push("otp"); } },
+      {
+        async updateDeliveryByProviderMessageId(_id, status, failure) {
+          updates.push(`${status}:${failure}`);
+          return 1;
+        },
+      },
+    );
+
+    expect(updates).toEqual(["otp", "failed:Message undeliverable"]);
   });
 });

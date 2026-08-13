@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { createWhatsAppProvider } from "@/lib/whatsapp/providers/provider-factory";
 import { whatsappService, type WhatsAppWebhookResult } from "@/lib/whatsapp/whatsapp-service";
 import { brokerVerificationService } from "@/lib/claims/broker-verification-service";
-import { parseMetaDeliveryStatuses } from "@/lib/whatsapp/providers/meta-provider";
+import { parseMetaDeliveryStatuses, type WhatsAppDeliveryStatus } from "@/lib/whatsapp/providers/meta-provider";
 import { firestoreWhatsAppBrokerWorkspaceService } from "@/lib/whatsapp/broker-workspace-service";
 import { WhatsAppMessageSender } from "@/lib/whatsapp/whatsapp-message-sender";
+import { customerOperationsService } from "@/lib/customer-operations/customer-operations-service";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -32,7 +33,11 @@ export async function POST(request: Request) {
     console.info("WhatsApp webhook received", summarizeWebhookPayload(payload));
     const deliveryStatuses = parseMetaDeliveryStatuses(payload);
     if (deliveryStatuses.length) {
-      await brokerVerificationService.recordDeliveryStatuses(deliveryStatuses);
+      await fanOutDeliveryStatuses(
+        deliveryStatuses,
+        brokerVerificationService,
+        customerOperationsService,
+      );
     }
     const results = await whatsappService.handleWebhookBatch(payload, provider);
     const result = results.find((item) => item.status !== "ignored") ?? results[0] ?? { status: "ignored", reply: "" };
@@ -62,6 +67,24 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("WhatsApp webhook failed", error);
     return NextResponse.json({ received: true }, { status: 200 });
+  }
+}
+
+export async function fanOutDeliveryStatuses(
+  statuses: WhatsAppDeliveryStatus[],
+  otpAudit: Pick<typeof brokerVerificationService, "recordDeliveryStatuses">,
+  customerOperations: Pick<
+    typeof customerOperationsService,
+    "updateDeliveryByProviderMessageId"
+  >,
+) {
+  await otpAudit.recordDeliveryStatuses(statuses);
+  for (const status of statuses) {
+    await customerOperations.updateDeliveryByProviderMessageId(
+      status.messageId,
+      status.status,
+      status.error?.title ?? null,
+    );
   }
 }
 

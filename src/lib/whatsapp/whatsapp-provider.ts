@@ -14,4 +14,8 @@ export interface WhatsAppProvider {
   sendMediaMessage(to: string, mediaUrl: string, caption?: string): Promise<{ id: string; status: "sent" | "mocked" }>;
   downloadMedia(mediaId: string): Promise<{ url: string; contentType: string }>;
   sendInteractiveButtons(to: string, body: string, buttons: string[]): Promise<{ id: string; status: "sent" | "mocked" }>;
+  sendTemplateMessage(
+    to: string,
+    template: { name: string; languageCode: string },
+  ): Promise<{ id: string; status: "sent" | "mocked" }>;
 }

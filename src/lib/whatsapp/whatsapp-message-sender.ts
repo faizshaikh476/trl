@@ -23,6 +23,7 @@ interface RetainedCustomerOperations {
     messageId: string,
     failureSummary: string,
   ): Promise<CustomerMessage>;
+  retryOutbound(contactId: string, messageId: string): Promise<CustomerMessage>;
   recordDomainEvent(input: {
     contactId: string;
     workspaceId: string;
@@ -109,6 +110,48 @@ export class WhatsAppMessageSender {
           error instanceof Error ? error.message : "WhatsApp media send failed",
         );
       }
+      throw error;
+    }
+  }
+
+  async sendTemplate(input: {
+    phone: string;
+    workspaceId: string;
+    template: { name: string; languageCode: string };
+    senderType: "automation" | "admin";
+  }) {
+    const intent = await this.customerOperations.createOutboundIntent({
+      phone: input.phone,
+      workspaceId: input.workspaceId,
+      text: `Approved template: ${input.template.name}`,
+      senderType: input.senderType,
+    });
+    try {
+      const result = await this.provider.sendTemplateMessage(input.phone, input.template);
+      await this.customerOperations.markOutboundSent(intent.contactId, intent.id, result.id);
+      return result;
+    } catch (error) {
+      await this.customerOperations.markOutboundFailed(
+        intent.contactId,
+        intent.id,
+        error instanceof Error ? error.message : "WhatsApp template send failed",
+      );
+      throw error;
+    }
+  }
+
+  async retryText(message: CustomerMessage) {
+    const pending = await this.customerOperations.retryOutbound(message.contactId, message.id);
+    try {
+      const result = await this.provider.sendTextMessage(message.contactId.replace(/^contact_/, ""), pending.text);
+      await this.customerOperations.markOutboundSent(pending.contactId, pending.id, result.id);
+      return result;
+    } catch (error) {
+      await this.customerOperations.markOutboundFailed(
+        pending.contactId,
+        pending.id,
+        error instanceof Error ? error.message : "WhatsApp retry failed",
+      );
       throw error;
     }
   }

@@ -172,6 +172,26 @@ export class MetaWhatsAppProvider implements WhatsAppProvider {
 
     return { id: response.messages?.[0]?.id ?? `wameta_buttons_${Date.now()}`, status: "sent" as const };
   }
+
+  async sendTemplateMessage(
+    to: string,
+    template: { name: string; languageCode: string },
+  ) {
+    const response = await callMetaMessagesApi({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: {
+        name: template.name,
+        language: { code: template.languageCode },
+      },
+    });
+    return {
+      id: response.messages?.[0]?.id ?? `wameta_template_${Date.now()}`,
+      status: "sent" as const,
+    };
+  }
 }
 
 export function parseMetaDeliveryStatuses(payload: unknown): WhatsAppDeliveryStatus[] {
