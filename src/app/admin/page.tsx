@@ -3,19 +3,12 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { listAIProviders } from "@/lib/ai/ai-router";
+import { loadAdminOverview } from "@/lib/admin/admin-overview-model";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
-import { billingService } from "@/lib/billing/billing-service";
-import { leadService } from "@/lib/leads/lead-service";
-import { listingService } from "@/lib/listings/listing-service";
-import { workspaceService } from "@/lib/workspaces/workspace-service";
 
 export default async function AdminPage() {
   await getCurrentAdmin();
-  const workspaces = await workspaceService.list();
-  const primaryWorkspace = workspaces[0];
-  const listings = primaryWorkspace ? await listingService.listByWorkspace(primaryWorkspace.id) : [];
-  const leads = primaryWorkspace ? await leadService.listByWorkspace(primaryWorkspace.id) : [];
-  const plans = await billingService.listPlans();
+  const overview = await loadAdminOverview();
 
   return (
     <AdminShell active="Overview">
@@ -29,9 +22,9 @@ export default async function AdminPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
-          <StatCard label="Workspaces" value={workspaces.length} detail="Broker accounts" />
-          <StatCard label="Listings" value={listings.length} detail="All workspace listings" />
-          <StatCard label="Leads" value={leads.length} detail="Across platform" />
+          <StatCard label="Workspaces" value={overview.workspaceCount} detail="Broker accounts" />
+          <StatCard label="Listings" value={overview.listingCount} detail="Across platform" />
+          <StatCard label="Leads" value={overview.leadCount} detail="Across platform" />
           <StatCard label="AI cost" value="₹0" detail="Current period" />
         </div>
 
@@ -65,10 +58,10 @@ export default async function AdminPage() {
                   <h2 className="text-xl font-semibold">Platform plans</h2>
                   <p className="mt-1 text-sm text-slate-400">Pricing and published listing limits.</p>
                 </div>
-                <Badge className="bg-cyan-300 text-slate-950">{plans.length} plans</Badge>
+                <Badge className="bg-cyan-300 text-slate-950">{overview.plans.length} plans</Badge>
               </div>
               <div className="mt-5 space-y-3">
-                {plans.map((plan) => (
+                {overview.plans.map((plan) => (
                   <div key={plan.id} className="flex items-center justify-between">
                     <span>{plan.name}</span>
                     <span className="text-slate-400">
