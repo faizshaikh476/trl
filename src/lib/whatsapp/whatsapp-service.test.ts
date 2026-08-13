@@ -424,6 +424,109 @@ describe("WhatsAppService intake cues", () => {
     expect(result.reply).toContain("share the property details");
   });
 
+  it("silently ignores a clearly unrelated job enquiry without starting intake", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+    });
+    const phone = "918369534639";
+    const workspaceId = `workspace_broker_${phone}`;
+
+    const result = await service.handleWebhook(
+      { text: "Hi, any job opportunities?", from: phone },
+      new MockWhatsAppProvider(),
+    );
+
+    expect(result.status).toBe("unrelated_ignored");
+    expect(result.reply).toBe("");
+    expect(await store.getActiveSession(workspaceId, phone)).toBeNull();
+  });
+
+  it("sends the introduction once for greeting variants", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+    });
+    const provider = new MockWhatsAppProvider();
+    const phone = "918369534640";
+
+    const greeting = await service.handleWebhook({ text: "Good morning", from: phone }, provider);
+    const repeatedGreeting = await service.handleWebhook({ text: "Namaste", from: phone }, provider);
+
+    expect(greeting.status).toBe("collecting");
+    expect(greeting.reply).toContain("property details and clear photos");
+    expect(repeatedGreeting.reply).toBe("");
+  });
+
+  it("introduces the service once without storing ambiguous opening text as listing content", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+    });
+    const provider = new MockWhatsAppProvider();
+    const phone = "918369534641";
+    const workspaceId = `workspace_broker_${phone}`;
+
+    const first = await service.handleWebhook({ text: "How does this work?", from: phone }, provider);
+    const second = await service.handleWebhook({ text: "Can you tell me more?", from: phone }, provider);
+    const session = await store.getActiveSession(workspaceId, phone);
+
+    expect(first.status).toBe("collecting");
+    expect(first.reply).toContain("property details and clear photos");
+    expect(second.reply).toBe("");
+    expect(session?.messages).toEqual([]);
+  });
+
+  it("keeps a job enquiry silent after an introduction-only session", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+    });
+    const provider = new MockWhatsAppProvider();
+    const phone = "918369534642";
+    const workspaceId = `workspace_broker_${phone}`;
+
+    await service.handleWebhook({ text: "Hello there", from: phone }, provider);
+    const job = await service.handleWebhook({ text: "I am looking for a vacancy", from: phone }, provider);
+    const session = await store.getActiveSession(workspaceId, phone);
+
+    expect(job.status).toBe("unrelated_ignored");
+    expect(job.reply).toBe("");
+    expect(session?.messages).toEqual([]);
+  });
+
+  it("activates intake from property details after an introduction and accepts later fragments", async () => {
+    const store = createMemorySessionStore();
+    const service = new WhatsAppService({
+      sessionStore: store,
+      processedMessageStore: createMemoryProcessedMessageStore(),
+      brokerWorkspaceService: createBrokerWorkspaceService(),
+    });
+    const provider = new MockWhatsAppProvider();
+    const phone = "918369534643";
+    const workspaceId = `workspace_broker_${phone}`;
+    const propertyText = "2 BHK flat for rent in Wakad";
+
+    await service.handleWebhook({ text: "Can you help me?", from: phone }, provider);
+    const property = await service.handleWebhook({ text: propertyText, from: phone }, provider);
+    const fragment = await service.handleWebhook({ text: "Available immediately", from: phone }, provider);
+    const session = await store.getActiveSession(workspaceId, phone);
+
+    expect(property.status).toBe("collecting");
+    expect(property.reply).toContain("Type DONE");
+    expect(fragment.status).toBe("collecting_silent");
+    expect(fragment.reply).toBe("");
+    expect(session?.messages).toEqual([propertyText, "Available immediately"]);
+  });
+
   it("does not run AI when DONE arrives after gibberish content", async () => {
     const store = createMemorySessionStore();
     const ai = { extractListing: vi.fn() };
@@ -442,13 +545,13 @@ describe("WhatsAppService intake cues", () => {
     const done = await service.handleWebhook({ text: "done", from: "917276709161" }, provider);
     const session = await store.getActiveSession("workspace_broker_917276709161", "917276709161");
 
-    expect(done.status).toBe("insufficient_property_details");
+    expect(done.status).toBe("collecting");
     expect(done.reply).toContain("property details");
-    expect(done.reply).toContain("rent/sale");
     expect(done.followUp).toBeUndefined();
     expect(ai.extractListing).not.toHaveBeenCalled();
     expect(listings.createFromExtraction).not.toHaveBeenCalled();
     expect(session?.status).toBe("collecting");
+    expect(session?.messages).toEqual([]);
   });
 
   it("does not run AI when abusive or inappropriate text is sent as listing content", async () => {

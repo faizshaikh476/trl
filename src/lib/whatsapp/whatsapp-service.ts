@@ -201,6 +201,7 @@ export class WhatsAppService {
         }
         return { status: "collecting_silent", to: message.from, reply: "" };
       }
+      if (session) return { status: "introduction_silent", to: message.from, reply: "" };
       if (!session) await this.dependencies.sessionStore.startSession(message.workspaceId, message.from);
       const brokerName = await this.verifiedBrokerName(message.workspaceId, message.from);
       return { status: "collecting", to: message.from, reply: brokerName ? welcomeBackReply(brokerName) : START_REPLY };
@@ -215,6 +216,21 @@ export class WhatsAppService {
 
     if (text || imageMedia.length) {
       const existingSession = await this.dependencies.sessionStore.getActiveSession(message.workspaceId, message.from);
+      const hasIntakeContent = Boolean(existingSession?.messages.length || existingSession?.media.length);
+      if (!hasIntakeContent && !imageMedia.length && !hasPropertySignal(text)) {
+        if (isClearlyUnrelatedOpening(text)) {
+          return { status: "unrelated_ignored", to: message.from, reply: "" };
+        }
+        if (existingSession) {
+          return { status: "introduction_silent", to: message.from, reply: "" };
+        }
+        await this.dependencies.sessionStore.startSession(message.workspaceId, message.from);
+        return {
+          status: "collecting",
+          to: message.from,
+          reply: START_REPLY,
+        };
+      }
       const shouldAcknowledgeCollection =
         (!existingSession || !existingSession.collectionAcknowledgedAt) && existingSession?.status !== "processing";
       await this.dependencies.sessionStore.appendMessage(message.workspaceId, message.from, {
@@ -474,7 +490,7 @@ async function saveIncomingMediaAssets(message: ParsedWhatsAppMessage, listingId
 }
 
 function isGreeting(text: string) {
-  return /^(hi|hello|hey|start|namaste|hii+)$/i.test(text.trim());
+  return /^(?:(?:hi+|hello|hey|start|namaste|salaam|salam)(?:\s+(?:there|team|sir|madam|ji))?|good\s+(?:morning|afternoon|evening))[\s!,.🙏👋]*$/i.test(text.trim());
 }
 
 function onlyImageMedia(media: ParsedWhatsAppMessage["media"]) {
@@ -514,6 +530,20 @@ const propertySignalPatterns = [
   /\b\d+\s*(?:bhk|rk|sqft|sq\.?\s*ft|lakh|lac|cr|crore|k)\b/i,
   /(?:₹|rs\.?|inr)\s*\d+/i,
 ];
+const clearlyUnrelatedOpeningPatterns = [
+  /\b(?:job|career|employment)\s+(?:opening|opportunit(?:y|ies)|vacanc(?:y|ies))\b/i,
+  /\b(?:looking|searching|applying)\s+for\s+(?:a\s+)?(?:job|work|employment|vacanc(?:y|ies))\b/i,
+  /\b(?:send|share|submit|attach)(?:ing)?\s+(?:my\s+)?(?:resume|cv)\b/i,
+  /\b(?:hiring|recruiting)\b/i,
+];
+
+function hasPropertySignal(text: string) {
+  return propertySignalPatterns.some((pattern) => pattern.test(text));
+}
+
+function isClearlyUnrelatedOpening(text: string) {
+  return clearlyUnrelatedOpeningPatterns.some((pattern) => pattern.test(text));
+}
 
 function validateIntakeContent(text: string, imageCount: number): IntakeGateResult {
   const normalizedText = text.trim();
