@@ -18,6 +18,7 @@ import { getCurrentAdmin } from "@/lib/auth/current-user";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { billingService } from "@/lib/billing/billing-service";
+import { formatIndiaDateTime } from "@/lib/time/india-time";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import type { CreditPurchase } from "@/types/domain";
 
@@ -383,13 +384,10 @@ function formatRupeesFromPaise(amountPaise: number) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return "not set";
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "not set";
-  return new Intl.DateTimeFormat("en-IN", {
+  return formatIndiaDateTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(timestamp));
+  }) ?? "not set";
 }
 
 function shortId(value: string) {

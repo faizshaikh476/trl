@@ -6,6 +6,7 @@ import {
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
+import { formatIndiaDate } from "@/lib/time/india-time";
 import type { CreditPurchase, CreditWallet, Listing, Plan, Workspace } from "@/types/domain";
 
 export type PlanInput = {
@@ -465,13 +466,7 @@ function formatPurchaseAmount(amountPaise: number, currency: Plan["currency"]) {
 }
 
 function formatCreditDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Invalid date";
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return formatIndiaDate(value) ?? "Invalid date";
 }
 
 function purchaseTime(purchase: CreditPurchase) {

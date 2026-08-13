@@ -32,7 +32,7 @@ export function CustomerDetailDrawer({ detail, closeHref, plans, initialTab = "o
             <TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="conversation">Conversation</TabsTrigger><TabsTrigger value="activity">Activity</TabsTrigger><TabsTrigger value="manage">Manage</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="overflow-y-auto p-5"><Overview detail={detail} /></TabsContent>
-          <TabsContent value="conversation" className="min-h-0 overflow-hidden"><CustomerConversation contactId={activity.id} workspaceId={activity.workspaceId} messages={detail.messages} insideReplyWindow={detail.insideReplyWindow} retentionLabel={detail.retentionLabel} /></TabsContent>
+          <TabsContent value="conversation" className="min-h-0 overflow-hidden data-active:flex"><CustomerConversation contactId={activity.id} workspaceId={activity.workspaceId} messages={detail.messages} insideReplyWindow={detail.insideReplyWindow} retentionLabel={detail.retentionLabel} /></TabsContent>
           <TabsContent value="activity" className="overflow-y-auto p-5"><ActivityTimeline events={detail.events} /></TabsContent>
           <TabsContent value="manage" className="overflow-y-auto p-5"><Manage detail={detail} plans={plans} /></TabsContent>
         </Tabs>

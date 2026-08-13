@@ -1,6 +1,7 @@
 import { AdminSectionPage } from "@/components/admin/admin-section-page";
 import { auditLogService } from "@/lib/audit/audit-log-service";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
+import { formatIndiaDate } from "@/lib/time/india-time";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 
 export default async function AdminAuditPage() {
@@ -35,7 +36,7 @@ export default async function AdminAuditPage() {
         action: log.action,
         actor: log.actorId,
         target: log.targetId ?? "-",
-        date: new Date(log.createdAt).toLocaleDateString("en-IN"),
+        date: formatIndiaDate(log.createdAt) ?? "Invalid date",
       }))}
     />
   );

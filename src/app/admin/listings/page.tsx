@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
 import { formatRupees } from "@/lib/format";
 import { listingService } from "@/lib/listings/listing-service";
+import { formatIndiaDateTime } from "@/lib/time/india-time";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import {
   deleteListingInWorkspaceAction,
@@ -286,10 +287,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-IN", {
+  return formatIndiaDateTime(value, {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }) ?? "Invalid date";
 }

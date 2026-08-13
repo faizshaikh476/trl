@@ -12,6 +12,7 @@ import {
 import { paymentService } from "@/lib/billing/payment-service";
 import { creditWalletService } from "@/lib/billing/credit-wallet-service";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { formatIndiaDateTime } from "@/lib/time/india-time";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
 import type { BillingPurchaseSummary } from "@/lib/billing/billing-service";
 
@@ -249,13 +250,11 @@ function statusMeta(status: BillingPurchaseSummary["status"]) {
 }
 
 function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
-  return date.toLocaleString("en-IN", {
+  return formatIndiaDateTime(value, {
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+  }) ?? "Not available";
 }
