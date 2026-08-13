@@ -66,17 +66,33 @@ export class FirestoreListingRepository implements ListingRepository {
     extraction: ListingExtraction,
     publication?: PublicationOptions,
   ) {
+    return this.createExtractionListing(workspaceId, extraction, "published", publication);
+  }
+
+  async createReadyToPublishFromExtraction(
+    workspaceId: string,
+    extraction: ListingExtraction,
+  ) {
+    return this.createExtractionListing(workspaceId, extraction, "ready_to_publish");
+  }
+
+  private async createExtractionListing(
+    workspaceId: string,
+    extraction: ListingExtraction,
+    status: "published" | "ready_to_publish",
+    publication?: PublicationOptions,
+  ) {
     const now = new Date().toISOString();
     const normalizedExtraction = normalizeListingExtractionTitle(extraction);
     const listingRef = getAdminDb().collection(firestorePaths.workspaceListings(workspaceId)).doc();
-    const credit = await publication?.consumeCredit?.(listingRef.id);
-    const expiresAt = addDaysIso(publication?.visibilityDays ?? 60);
+    const credit = status === "published" ? await publication?.consumeCredit?.(listingRef.id) : null;
+    const expiresAt = status === "published" ? addDaysIso(publication?.visibilityDays ?? 60) : null;
     const listing: Listing = {
       id: listingRef.id,
       workspaceId,
       title: normalizedExtraction.title,
       slug: `${slugify(normalizedExtraction.title)}-${listingRef.id.slice(0, 8)}`,
-      status: "published",
+      status,
       transactionType: normalizedExtraction.transactionType,
       propertyType: normalizedExtraction.propertyType,
       location: normalizedExtraction.location,
@@ -116,12 +132,12 @@ export class FirestoreListingRepository implements ListingRepository {
       callClicks: 0,
       assignedTo: null,
       createdBy: "whatsapp",
-      publishedAt: now,
+      publishedAt: status === "published" ? now : null,
       expiresAt,
       creditConsumedAt: credit?.createdAt ?? null,
       creditLedgerEntryId: credit?.ledgerEntryId ?? null,
       lastConfirmedAt: null,
-      freshnessStatus: "Updated today",
+      freshnessStatus: status === "published" ? "Updated today" : "Ready to publish",
       seoTitle: normalizedExtraction.seoTitle,
       seoDescription: normalizedExtraction.seoDescription,
       whatsappShareText: normalizedExtraction.whatsappShareText,
@@ -130,12 +146,14 @@ export class FirestoreListingRepository implements ListingRepository {
       updatedAt: now,
     };
     await listingRef.set(listing);
-    await getAdminDb().doc(firestorePaths.publicListing(listing.slug)).set({
-      workspaceId: listing.workspaceId,
-      listingId: listing.id,
-      slug: listing.slug,
-      updatedAt: now,
-    });
+    if (status === "published") {
+      await getAdminDb().doc(firestorePaths.publicListing(listing.slug)).set({
+        workspaceId: listing.workspaceId,
+        listingId: listing.id,
+        slug: listing.slug,
+        updatedAt: now,
+      });
+    }
     return listing;
   }
 

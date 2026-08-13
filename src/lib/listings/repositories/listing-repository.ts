@@ -24,6 +24,10 @@ export interface ListingRepository {
     extraction: ListingExtraction,
     publication?: PublicationOptions,
   ): Promise<Listing>;
+  createReadyToPublishFromExtraction(
+    workspaceId: string,
+    extraction: ListingExtraction,
+  ): Promise<Listing>;
   createManual(workspaceId: string, createdBy: string, input: ManualListingInput): Promise<Listing>;
   updateManual(id: string, input: Partial<ManualListingInput>): Promise<Listing>;
   updateManualInWorkspace(

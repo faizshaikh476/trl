@@ -44,17 +44,33 @@ export class DemoListingRepository implements ListingRepository {
     extraction: ListingExtraction,
     publication?: PublicationOptions,
   ) {
+    return this.createExtractionListing(workspaceId, extraction, "published", publication);
+  }
+
+  async createReadyToPublishFromExtraction(
+    workspaceId: string,
+    extraction: ListingExtraction,
+  ) {
+    return this.createExtractionListing(workspaceId, extraction, "ready_to_publish");
+  }
+
+  private async createExtractionListing(
+    workspaceId: string,
+    extraction: ListingExtraction,
+    status: "published" | "ready_to_publish",
+    publication?: PublicationOptions,
+  ) {
     const now = new Date().toISOString();
     const normalizedExtraction = normalizeListingExtractionTitle(extraction);
     const id = `listing_${Date.now()}`;
-    const credit = await publication?.consumeCredit?.(id);
-    const expiresAt = addDaysIso(publication?.visibilityDays ?? 60);
+    const credit = status === "published" ? await publication?.consumeCredit?.(id) : null;
+    const expiresAt = status === "published" ? addDaysIso(publication?.visibilityDays ?? 60) : null;
     const listing: Listing = {
       id,
       workspaceId,
       title: normalizedExtraction.title,
       slug: `${slugify(normalizedExtraction.title)}-${Date.now()}`,
-      status: "published",
+      status,
       transactionType: normalizedExtraction.transactionType,
       propertyType: normalizedExtraction.propertyType,
       location: normalizedExtraction.location,
@@ -94,12 +110,12 @@ export class DemoListingRepository implements ListingRepository {
       callClicks: 0,
       assignedTo: null,
       createdBy: "mock_whatsapp",
-      publishedAt: now,
+      publishedAt: status === "published" ? now : null,
       expiresAt,
       creditConsumedAt: credit?.createdAt ?? null,
       creditLedgerEntryId: credit?.ledgerEntryId ?? null,
       lastConfirmedAt: null,
-      freshnessStatus: "Updated today",
+      freshnessStatus: status === "published" ? "Updated today" : "Ready to publish",
       seoTitle: normalizedExtraction.seoTitle,
       seoDescription: normalizedExtraction.seoDescription,
       whatsappShareText: normalizedExtraction.whatsappShareText,

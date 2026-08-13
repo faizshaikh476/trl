@@ -126,6 +126,20 @@ class InMemoryPaymentStore implements PaymentStore {
     return structuredClone(purchase);
   }
 
+  async markActivationResult(input: {
+    purchaseId: string;
+    activationCompletedAt: string | null;
+    activationError: string | null;
+    updatedAt: string;
+  }) {
+    const purchase = this.requirePurchase(input.purchaseId);
+    purchase.activationCompletedAt = input.activationCompletedAt;
+    purchase.activationError = input.activationError;
+    purchase.updatedAt = input.updatedAt;
+    this.purchases.set(purchase.id, structuredClone(purchase));
+    return structuredClone(purchase);
+  }
+
   async hasProviderEvent(providerEventId: string) {
     return this.providerEvents.has(providerEventId);
   }
@@ -191,6 +205,9 @@ describe("PaymentService", () => {
     sourceType: "purchase";
   }>;
   let service: PaymentService;
+  let activationListingStatus: "ready_to_publish" | "published";
+  let activationPublicationFailures: number;
+  let activationPublishCalls: number;
 
   beforeEach(() => {
     now = new Date("2026-07-10T12:00:00.000Z");
@@ -198,6 +215,9 @@ describe("PaymentService", () => {
     orders = new FakeRazorpayOrders();
     grantFailuresRemaining = 0;
     grants = [];
+    activationListingStatus = "ready_to_publish";
+    activationPublicationFailures = 0;
+    activationPublishCalls = 0;
     service = new PaymentService({
       store,
       orders,
@@ -226,6 +246,33 @@ describe("PaymentService", () => {
           };
         },
       },
+      listings: {
+        findByWorkspaceId: async (workspaceId, listingId) =>
+          workspaceId === "workspace_1" && listingId === "listing_1"
+            ? ({
+                id: listingId,
+                workspaceId,
+                status: activationListingStatus,
+                slug: "garden-flat",
+              } as never)
+            : null,
+        updateStatusInWorkspace: async (workspaceId, listingId) => {
+          activationPublishCalls += 1;
+          if (activationPublicationFailures > 0) {
+            activationPublicationFailures -= 1;
+            throw new Error("simulated publication failure");
+          }
+          activationListingStatus = "published";
+          return {
+            id: listingId,
+            workspaceId,
+            status: "published",
+            slug: "garden-flat",
+          } as never;
+        },
+      },
+      revalidateListing: () => undefined,
+      sendActivationMessage: async () => undefined,
       now: () => now,
     });
   });
@@ -270,6 +317,24 @@ describe("PaymentService", () => {
       provider: "razorpay",
       providerOrderId: "order_1",
     });
+  });
+
+  it("binds an activation purchase and Razorpay order to one saved listing", async () => {
+    const result = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "activate-listing-1",
+      activationListingId: "listing_1",
+      activationPhone: "919822052388",
+    });
+
+    expect(await store.findPurchaseById(result.purchaseId)).toMatchObject({
+      activationListingId: "listing_1",
+      activationPhone: "919822052388",
+      activationCompletedAt: null,
+      activationError: null,
+    });
+    expect(orders.calls[0].notes).toMatchObject({ activationListingId: "listing_1" });
   });
 
   it("reuses a pending purchase and provider order for duplicate create-order keys", async () => {
@@ -369,6 +434,57 @@ describe("PaymentService", () => {
         sourceType: "purchase",
       },
     ]);
+  });
+
+  it("publishes an activation listing exactly once after verified payment", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "activate-payment",
+      activationListingId: "listing_1",
+      activationPhone: "919822052388",
+    });
+    const verification = {
+      razorpay_order_id: order.providerOrderId,
+      razorpay_payment_id: "pay_activation",
+      razorpay_signature: checkoutSignature(order.providerOrderId, "pay_activation"),
+    };
+
+    const first = await service.verifyCheckout(verification);
+    const duplicate = await service.verifyCheckout(verification);
+
+    expect(first).toMatchObject({ activationCompletedAt: now.toISOString(), activationError: null });
+    expect(duplicate).toMatchObject({ activationCompletedAt: now.toISOString() });
+    expect(activationPublishCalls).toBe(1);
+    expect(grants).toHaveLength(1);
+  });
+
+  it("keeps granted credits and records a retryable activation failure", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "activate-retry",
+      activationListingId: "listing_1",
+    });
+    activationPublicationFailures = 1;
+    const verification = {
+      razorpay_order_id: order.providerOrderId,
+      razorpay_payment_id: "pay_activation_retry",
+      razorpay_signature: checkoutSignature(order.providerOrderId, "pay_activation_retry"),
+    };
+
+    const pending = await service.verifyCheckout(verification);
+    expect(pending).toMatchObject({
+      status: "paid",
+      creditGrantLedgerEntryId: `grant:purchase:${order.purchaseId}`,
+      activationCompletedAt: null,
+      activationError: "simulated publication failure",
+    });
+
+    const completed = await service.verifyCheckout(verification);
+    expect(completed).toMatchObject({ activationCompletedAt: now.toISOString(), activationError: null });
+    expect(grants).toHaveLength(1);
+    expect(activationPublishCalls).toBe(2);
   });
 
   it("retries checkout credit grants when a previous verification marked the purchase paid before grant failure", async () => {
@@ -509,6 +625,53 @@ describe("PaymentService", () => {
       processed: false,
       duplicate: true,
     });
+    expect(grants).toHaveLength(1);
+  });
+
+  it("leaves captured activation events unrecorded so a failed publication can retry", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "webhook-retry-activation",
+      activationListingId: "listing_1",
+    });
+    const rawBody = JSON.stringify({
+      id: "evt_activation_retry",
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: {
+            id: "pay_activation_webhook",
+            order_id: order.providerOrderId,
+            captured: true,
+          },
+        },
+      },
+    });
+    const signature = webhookSignature(rawBody);
+    activationPublicationFailures = 1;
+
+    await expect(service.processWebhook(rawBody, signature)).rejects.toThrow(
+      "simulated publication failure",
+    );
+    expect(await store.findPurchaseById(order.purchaseId)).toMatchObject({
+      status: "paid",
+      creditGrantLedgerEntryId: `grant:purchase:${order.purchaseId}`,
+      activationCompletedAt: null,
+      activationError: "simulated publication failure",
+      providerEventIds: [],
+    });
+
+    await expect(service.processWebhook(rawBody, signature)).resolves.toEqual({
+      processed: true,
+      duplicate: false,
+    });
+    expect(await store.findPurchaseById(order.purchaseId)).toMatchObject({
+      activationCompletedAt: now.toISOString(),
+      activationError: null,
+      providerEventIds: ["evt_activation_retry"],
+    });
+    expect(activationPublishCalls).toBe(2);
     expect(grants).toHaveLength(1);
   });
 

@@ -1,5 +1,6 @@
 import {
   creditWalletService,
+  effectiveCreditBalance,
   NoListingCreditsError,
 } from "@/lib/billing/credit-wallet-service";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -332,7 +333,7 @@ export function buildWorkspaceBillingSummary({
   return {
     currentPackageName: currentPlan?.name ?? workspace.planId,
     currentPackageId: currentPlan?.id ?? workspace.planId,
-    availableCredits: Math.max(0, wallet?.availableCredits ?? 0),
+    availableCredits: effectiveCreditBalance(wallet, now),
     validUntil,
     validUntilLabel: validUntil ? formatCreditDate(validUntil) : "No active credits",
     isWalletActive: Boolean(validUntil && Date.parse(validUntil) > now.getTime()),

@@ -192,6 +192,29 @@ describe("ListingService", () => {
 });
 
 describe("ListingService publication credits", () => {
+  it("creates a ready-to-publish extraction without consuming credits", async () => {
+    const repository = new CreditAwareListingRepository([]);
+    const wallet = createWallet();
+    const service = new ListingService(repository, {
+      billingService: createBilling(),
+      creditWalletService: wallet,
+    });
+
+    const created = await service.createReadyToPublishFromExtraction(
+      "workspace_1",
+      {} as Parameters<ListingRepository["createFromExtraction"]>[1],
+    );
+
+    expect(created).toMatchObject({
+      status: "ready_to_publish",
+      publishedAt: null,
+      expiresAt: null,
+      creditConsumedAt: null,
+      creditLedgerEntryId: null,
+    });
+    expect(wallet.consumeCalls).toEqual([]);
+  });
+
   it("consumes one credit and records publication metadata on first publication", async () => {
     const repository = new CreditAwareListingRepository([
       listingFixture({ id: "listing_1", status: "draft" }),
@@ -342,6 +365,19 @@ class CreditAwareListingRepository implements ListingRepository {
 
   async createFromExtraction(): Promise<Listing> {
     throw new Error("Not needed for this test.");
+  }
+
+  async createReadyToPublishFromExtraction(): Promise<Listing> {
+    const listing = listingFixture({
+      id: "listing_ready",
+      status: "ready_to_publish",
+      publishedAt: null,
+      expiresAt: null,
+      creditConsumedAt: null,
+      creditLedgerEntryId: null,
+    });
+    this.listings.set(listing.id, listing);
+    return structuredClone(listing);
   }
 
   async createManual(): Promise<Listing> {

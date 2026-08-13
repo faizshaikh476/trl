@@ -65,6 +65,10 @@ export class ListingService {
     );
   }
 
+  createReadyToPublishFromExtraction(workspaceId: string, extraction: ListingExtraction) {
+    return this.repository.createReadyToPublishFromExtraction(workspaceId, extraction);
+  }
+
   createManual(workspaceId: string, createdBy: string, input: ManualListingInput) {
     return this.repository.createManual(workspaceId, createdBy, input);
   }

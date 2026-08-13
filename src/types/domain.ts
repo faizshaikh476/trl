@@ -116,6 +116,10 @@ export interface CreditPurchase {
   failureReason: string | null;
   paidAt: TimestampString | null;
   refundedAt: TimestampString | null;
+  activationListingId?: string | null;
+  activationPhone?: string | null;
+  activationCompletedAt?: TimestampString | null;
+  activationError?: string | null;
   createdAt: TimestampString;
   updatedAt: TimestampString;
 }

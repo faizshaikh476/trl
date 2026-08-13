@@ -209,6 +209,10 @@ class ReactivationListingRepository implements ListingRepository {
     throw new Error("Not needed for this test.");
   }
 
+  async createReadyToPublishFromExtraction(): Promise<Listing> {
+    throw new Error("Not needed for this test.");
+  }
+
   async createManual(): Promise<Listing> {
     throw new Error("Not needed for this test.");
   }

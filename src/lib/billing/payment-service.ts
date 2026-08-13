@@ -2,9 +2,13 @@ import crypto from "node:crypto";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { billingService } from "@/lib/billing/billing-service";
 import { creditWalletService } from "@/lib/billing/credit-wallet-service";
+import { getPublicBaseUrl } from "@/lib/claims/owner-claim-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
-import type { CreditLedgerEntry, CreditPurchase, Plan } from "@/types/domain";
+import { listingService } from "@/lib/listings/listing-service";
+import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
+import { createWhatsAppProvider } from "@/lib/whatsapp/providers/provider-factory";
+import type { CreditLedgerEntry, CreditPurchase, Listing, Plan } from "@/types/domain";
 import { getRazorpayOrderClient } from "./razorpay-client";
 
 export interface PaymentOrderClient {
@@ -51,6 +55,12 @@ export interface PaymentStore {
     creditGrantLedgerEntryId: string;
     creditsGrantedAt: string;
   }): Promise<CreditPurchase>;
+  markActivationResult(input: {
+    purchaseId: string;
+    activationCompletedAt: string | null;
+    activationError: string | null;
+    updatedAt: string;
+  }): Promise<CreditPurchase>;
   hasProviderEvent(providerEventId: string): Promise<boolean>;
   recordProviderEvent(providerEventId: string): Promise<boolean>;
 }
@@ -73,6 +83,9 @@ export interface PaymentServiceDependencies {
       sourceType: "purchase";
     }): Promise<CreditLedgerEntry>;
   };
+  listings: Pick<typeof listingService, "findByWorkspaceId" | "updateStatusInWorkspace">;
+  revalidateListing(listing: Listing): void;
+  sendActivationMessage(input: { phone: string; listing: Listing }): Promise<void>;
   now?: () => Date;
 }
 
@@ -80,6 +93,8 @@ export interface CreatePaymentOrderInput {
   workspaceId: string;
   planId: string;
   idempotencyKey: string;
+  activationListingId?: string | null;
+  activationPhone?: string | null;
 }
 
 export interface CheckoutVerificationInput {
@@ -87,6 +102,7 @@ export interface CheckoutVerificationInput {
   razorpay_payment_id: string;
   razorpay_signature: string;
   workspaceId?: string;
+  activationListingId?: string;
 }
 
 export class PaymentService {
@@ -125,6 +141,10 @@ export class PaymentService {
       failureReason: null,
       paidAt: null,
       refundedAt: null,
+      activationListingId: input.activationListingId?.trim() || null,
+      activationPhone: input.activationPhone?.trim() || null,
+      activationCompletedAt: null,
+      activationError: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -143,6 +163,9 @@ export class PaymentService {
         purchaseId: stored.id,
         workspaceId: stored.workspaceId,
         planId: stored.planId,
+        ...(stored.activationListingId
+          ? { activationListingId: stored.activationListingId }
+          : {}),
       },
     });
     const updated = await this.dependencies.store.setPurchaseProviderOrderId(
@@ -171,6 +194,12 @@ export class PaymentService {
       if (input.workspaceId && purchase.workspaceId !== input.workspaceId) {
         throw new Error("Checkout does not match this workspace.");
       }
+      if (
+        input.activationListingId &&
+        purchase.activationListingId !== input.activationListingId
+      ) {
+        throw new Error("Checkout does not match this listing.");
+      }
       return transaction.markPaid({
         purchaseId: purchase.id,
         providerPaymentId: paymentId,
@@ -178,12 +207,17 @@ export class PaymentService {
       });
     });
 
-    return this.ensurePurchaseCreditsGranted(result.purchase);
+    return this.completePaidPurchase(result.purchase);
   }
 
   async listPurchasesByWorkspace(workspaceId: string, limit = 25) {
     assertIdentifier(workspaceId, "workspaceId");
     return this.dependencies.store.listPurchasesByWorkspace(workspaceId, limit);
+  }
+
+  async findPurchaseById(purchaseId: string) {
+    assertIdentifier(purchaseId, "purchaseId");
+    return this.dependencies.store.findPurchaseById(purchaseId);
   }
 
   async processWebhook(rawBody: string, signature: string | null) {
@@ -215,7 +249,11 @@ export class PaymentService {
     const result = await this.dependencies.store.runTransaction(async (transaction) => {
       const purchase = await transaction.findPurchaseByProviderOrderId(orderId);
       if (!purchase) return { processed: false, duplicate: false, purchase: null };
-      if (purchase.providerEventIds.includes(event.id) && purchase.creditGrantLedgerEntryId) {
+      if (
+        purchase.providerEventIds.includes(event.id) &&
+        purchase.creditGrantLedgerEntryId &&
+        (!purchase.activationListingId || purchase.activationCompletedAt)
+      ) {
         return { processed: false, duplicate: true, purchase };
       }
 
@@ -233,7 +271,10 @@ export class PaymentService {
     });
 
     if (result.processed && result.purchase) {
-      const purchase = await this.ensurePurchaseCreditsGranted(result.purchase);
+      const purchase = await this.completePaidPurchase(result.purchase);
+      if (purchase.activationListingId && !purchase.activationCompletedAt) {
+        throw new Error(purchase.activationError ?? "Listing activation is still pending.");
+      }
       if (!result.eventAlreadyRecorded) {
         await this.dependencies.store.markPaid({
           purchaseId: purchase.id,
@@ -310,6 +351,52 @@ export class PaymentService {
       creditGrantLedgerEntryId: entry.id,
       creditsGrantedAt: this.now().toISOString(),
     });
+  }
+
+  private async completePaidPurchase(purchase: CreditPurchase) {
+    const credited = await this.ensurePurchaseCreditsGranted(purchase);
+    if (!credited.activationListingId || credited.activationCompletedAt) return credited;
+
+    try {
+      const listing = await this.dependencies.listings.findByWorkspaceId(
+        credited.workspaceId,
+        credited.activationListingId,
+      );
+      if (!listing) throw new Error("Activation listing not found.");
+      const published =
+        listing.status === "published"
+          ? listing
+          : await this.dependencies.listings.updateStatusInWorkspace(
+              credited.workspaceId,
+              credited.activationListingId,
+              "published",
+            );
+      this.dependencies.revalidateListing(published);
+      const completed = await this.dependencies.store.markActivationResult({
+        purchaseId: credited.id,
+        activationCompletedAt: this.now().toISOString(),
+        activationError: null,
+        updatedAt: this.now().toISOString(),
+      });
+      if (completed.activationPhone) {
+        try {
+          await this.dependencies.sendActivationMessage({
+            phone: completed.activationPhone,
+            listing: published,
+          });
+        } catch (error) {
+          console.error("Unable to send listing activation confirmation", error);
+        }
+      }
+      return completed;
+    } catch (error) {
+      return this.dependencies.store.markActivationResult({
+        purchaseId: credited.id,
+        activationCompletedAt: null,
+        activationError: error instanceof Error ? error.message : "Listing activation failed.",
+        updatedAt: this.now().toISOString(),
+      });
+    }
   }
 }
 
@@ -417,6 +504,23 @@ export class FirestorePaymentStore implements PaymentStore {
       creditGrantLedgerEntryId: input.creditGrantLedgerEntryId,
       creditsGrantedAt: input.creditsGrantedAt,
       updatedAt: input.creditsGrantedAt,
+    };
+    await this.db.doc(firestorePaths.purchase(updated.id)).set(updated);
+    return updated;
+  }
+
+  async markActivationResult(input: {
+    purchaseId: string;
+    activationCompletedAt: string | null;
+    activationError: string | null;
+    updatedAt: string;
+  }) {
+    const purchase = await this.requirePurchase(input.purchaseId);
+    const updated = {
+      ...purchase,
+      activationCompletedAt: input.activationCompletedAt,
+      activationError: input.activationError,
+      updatedAt: input.updatedAt,
     };
     await this.db.doc(firestorePaths.purchase(updated.id)).set(updated);
     return updated;
@@ -547,6 +651,22 @@ class FirestorePaymentTransaction implements PaymentStore {
       creditGrantLedgerEntryId: input.creditGrantLedgerEntryId,
       creditsGrantedAt: input.creditsGrantedAt,
       updatedAt: input.creditsGrantedAt,
+    };
+    this.transaction.set(this.db.doc(firestorePaths.purchase(purchase.id)), purchase);
+    return purchase;
+  }
+
+  async markActivationResult(input: {
+    purchaseId: string;
+    activationCompletedAt: string | null;
+    activationError: string | null;
+    updatedAt: string;
+  }) {
+    const purchase = {
+      ...(await this.requirePurchase(input.purchaseId)),
+      activationCompletedAt: input.activationCompletedAt,
+      activationError: input.activationError,
+      updatedAt: input.updatedAt,
     };
     this.transaction.set(this.db.doc(firestorePaths.purchase(purchase.id)), purchase);
     return purchase;
@@ -760,4 +880,12 @@ export const paymentService = new PaymentService({
       (await billingService.listActivePlans()).find((plan) => plan.id === planId) ?? null,
   },
   wallet: creditWalletService,
+  listings: listingService,
+  revalidateListing: revalidatePublicListing,
+  sendActivationMessage: async ({ phone, listing }) => {
+    await createWhatsAppProvider().sendTextMessage(
+      phone,
+      `✅ Payment received. Your listing is live:\n${getPublicBaseUrl()}/l/${listing.slug}`,
+    );
+  },
 });

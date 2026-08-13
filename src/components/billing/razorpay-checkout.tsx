@@ -12,6 +12,7 @@ interface RazorpayCheckoutProps {
   buttonLabel?: string;
   className?: string;
   variant?: "panel" | "button";
+  activationToken?: string;
 }
 
 interface BillingOrderResponse {
@@ -63,6 +64,7 @@ export function RazorpayCheckout({
   buttonLabel,
   className,
   variant = "panel",
+  activationToken,
 }: RazorpayCheckoutProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -78,6 +80,7 @@ export function RazorpayCheckout({
         body: JSON.stringify({
           planId,
           idempotencyKey: makeIdempotencyKey(),
+          ...(activationToken ? { activationToken } : {}),
         }),
       });
       const order = (await orderResponse.json()) as BillingOrderResponse;
@@ -97,7 +100,7 @@ export function RazorpayCheckout({
         description: order.planLabel,
         order_id: order.orderId,
         handler: (response) => {
-          void verifyCheckout(response, order.purchaseId);
+          void verifyCheckout(response, order.purchaseId, activationToken);
         },
         modal: {
           ondismiss: () => {
@@ -118,12 +121,13 @@ export function RazorpayCheckout({
   async function verifyCheckout(
     response: RazorpayCheckoutResponse,
     fallbackPurchaseId: string,
+    token?: string,
   ) {
     try {
       const verifyResponse = await fetch("/api/billing/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(response),
+        body: JSON.stringify({ ...response, ...(token ? { activationToken: token } : {}) }),
       });
       const result = (await verifyResponse.json()) as {
         purchaseId?: string;

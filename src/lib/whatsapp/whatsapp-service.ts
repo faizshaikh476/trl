@@ -1,7 +1,7 @@
 import { aiListingService } from "@/lib/ai/ai-service";
-import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
+import { billingService } from "@/lib/billing/billing-service";
 import { NoListingCreditsError } from "@/lib/billing/credit-wallet-service";
-import { createPurchaseLinkToken } from "@/lib/billing/purchase-link";
+import { createListingActivationToken } from "@/lib/billing/listing-activation-link";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { formatRupees } from "@/lib/format";
@@ -38,8 +38,6 @@ const INAPPROPRIATE_CONTENT_REPLY =
 const PROCESSING_REPLY = "⏳ Got it! Give me ~30 seconds to grab all your photos and build the page...";
 const FAILED_REPLY =
   "⚠️ I couldn’t create the property page from this message. Please try again with the property details, price, location, and photos.";
-const NO_LISTING_CREDITS_REPLY =
-  "🚦 This workspace has no active listing credits.\n\nYour property details are still saved here. Buy a listing credit package, then type DONE again to publish.";
 const FINAL_SESSION_SETTLE_MS = 2500;
 
 export type WhatsAppOutboundMessage =
@@ -50,7 +48,8 @@ interface WhatsAppServiceDependencies {
   sessionStore: WhatsAppIntakeSessionStore;
   processedMessageStore: WhatsAppProcessedMessageStore;
   aiListingService: Pick<typeof aiListingService, "extractListing">;
-  listingService: Pick<typeof listingService, "createFromExtraction">;
+  listingService: Pick<typeof listingService, "createFromExtraction"> &
+    Partial<Pick<typeof listingService, "createReadyToPublishFromExtraction">>;
   ownerProfileService: Pick<typeof ownerProfileService, "findById" | "upsertFromWhatsApp">;
   ownerClaimService: Pick<
     typeof ownerClaimService,
@@ -58,7 +57,7 @@ interface WhatsAppServiceDependencies {
   >;
   billingService: Pick<
     typeof billingService,
-    "assertCanPublish" | "getListingCreditBalance" | "listActivePlans"
+    "assertCanPublish" | "getListingCreditBalance"
   >;
   saveMediaAssets: typeof saveIncomingMediaAssets;
   brokerWorkspaceService: WhatsAppBrokerWorkspaceService;
@@ -156,18 +155,6 @@ export class WhatsAppService {
         };
       }
 
-      try {
-        await this.dependencies.billingService.assertCanPublish(message.workspaceId);
-      } catch (error) {
-        if (error instanceof NoListingCreditsError) {
-          return {
-            status: "no_listing_credits",
-            to: message.from,
-            reply: await this.noListingCreditsReply(message.workspaceId),
-          };
-        }
-        throw error;
-      }
       await this.dependencies.sessionStore.markProcessing(message.workspaceId, message.from);
       return {
         status: "processing_started",
@@ -234,7 +221,13 @@ export class WhatsAppService {
       if (!session || (!session.messages.length && !session.media.length)) {
         return { status: "draft_failed", to: message.from, reply: EMPTY_DONE_REPLY };
       }
-      await this.dependencies.billingService.assertCanPublish(message.workspaceId);
+      let canPublish = true;
+      try {
+        await this.dependencies.billingService.assertCanPublish(message.workspaceId);
+      } catch (error) {
+        if (error instanceof NoListingCreditsError) canPublish = false;
+        else throw error;
+      }
       const sessionText = session.messages.join("\n\n");
       const sessionMedia = onlyImageMedia(session.media);
       const resolvedMedia = await resolveIncomingMedia(provider, {
@@ -248,10 +241,15 @@ export class WhatsAppService {
         text: sessionText,
         media: resolvedMedia,
       });
-      const listing = await this.dependencies.listingService.createFromExtraction(message.workspaceId, extraction.data);
-      const remainingCredits = await this.dependencies.billingService.getListingCreditBalance(
-        message.workspaceId,
-      );
+      const listing = canPublish
+        ? await this.dependencies.listingService.createFromExtraction(message.workspaceId, extraction.data)
+        : await requireReadyToPublishCreation(this.dependencies.listingService)(
+            message.workspaceId,
+            extraction.data,
+          );
+      const remainingCredits = canPublish
+        ? await this.dependencies.billingService.getListingCreditBalance(message.workspaceId)
+        : 0;
       const media = await this.dependencies.saveMediaAssets({ ...message, text: sessionText, media: resolvedMedia }, listing.id);
       const ownerProfile = await this.dependencies.ownerProfileService.upsertFromWhatsApp({
         workspaceId: message.workspaceId,
@@ -284,6 +282,22 @@ export class WhatsAppService {
         });
       }
       await this.dependencies.sessionStore.markCompleted(message.workspaceId, message.from, listing.id);
+      if (!canPublish) {
+        const activationToken = createListingActivationToken({
+          workspaceId: message.workspaceId,
+          listingId: listing.id,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        });
+        const activationUrl = `${getPublicBaseUrl()}/activate/${activationToken}`;
+        return {
+          status: "activation_required",
+          listing,
+          media,
+          to: message.from,
+          reply:
+            `✅ Your listing is saved and ready.\n\nActivate and publish it immediately after payment:\n${activationUrl}`,
+        };
+      }
       const publicListingUrl = `${getPublicBaseUrl()}/l/${listing.slug}`;
       const dashboardUrl = `${getPublicBaseUrl()}/dashboard`;
       const heroMedia = media.find((asset) => asset.isHero) ?? media[0] ?? null;
@@ -319,13 +333,6 @@ export class WhatsAppService {
         outboundMessages,
       };
     } catch (error) {
-      if (error instanceof NoListingCreditsError) {
-        return {
-          status: "no_listing_credits",
-          to: message.from,
-          reply: await this.noListingCreditsReply(message.workspaceId),
-        };
-      }
       console.error("WhatsApp intake follow-up failed", error);
       return { status: "draft_failed", to: message.from, reply: FAILED_REPLY };
     }
@@ -346,25 +353,15 @@ export class WhatsAppService {
     return "";
   }
 
-  private async noListingCreditsReply(workspaceId: string) {
-    const choices = (await this.dependencies.billingService.listActivePlans())
-      .filter((plan) => plan.status === "active" && plan.amountPaise > 0)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+}
 
-    if (!choices.length) return NO_LISTING_CREDITS_REPLY;
-
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const packageLines = choices.map((plan) => {
-      const token = createPurchaseLinkToken({
-        workspaceId,
-        planId: plan.id,
-        expiresAt,
-      });
-      return `- ${plan.name}: ${formatPlanPrice(plan)}\n${getPublicBaseUrl()}/pricing?purchase=${token}`;
-    });
-
-    return `${NO_LISTING_CREDITS_REPLY}\n\nChoose a package:\n${packageLines.join("\n\n")}`;
+function requireReadyToPublishCreation(
+  service: WhatsAppServiceDependencies["listingService"],
+) {
+  if (!service.createReadyToPublishFromExtraction) {
+    throw new Error("Ready-to-publish listing creation is not configured.");
   }
+  return service.createReadyToPublishFromExtraction.bind(service);
 }
 
 function sleep(ms: number) {

@@ -32,18 +32,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/lib/billing/credit-wallet-service", () => {
-  class NoListingCreditsError extends Error {
-    readonly code = "NO_LISTING_CREDITS";
-
-    constructor() {
-      super("This workspace has no active listing credits.");
-      this.name = "NoListingCreditsError";
-    }
-  }
-
+vi.mock("@/lib/billing/credit-wallet-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./credit-wallet-service")>();
   return {
-    NoListingCreditsError,
+    ...actual,
     creditWalletService: {
       getBalance: mocks.creditGetBalance,
       assertCanReactivate: mocks.creditAssertCanReactivate,
@@ -357,6 +349,43 @@ describe("buildWorkspaceBillingSummary", () => {
     expect(summary.availableCredits).toBe(34);
     expect(summary.validUntilLabel).toBe("10 Aug 2026");
     expect(summary.purchaseCount).toBe(1);
+  });
+
+  it("shows zero available credits when the wallet is expired", () => {
+    const workspace = {
+      id: "workspace_1",
+      name: "Broker 1",
+      slug: "broker-1",
+      city: "Pune",
+      ownerId: "owner_1",
+      logoURL: "",
+      contactName: "Owner",
+      contactPhone: "9999999999",
+      contactEmail: "owner@example.com",
+      websiteTheme: "premium",
+      customDomain: null,
+      planId: "free",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as const;
+
+    const summary = buildWorkspaceBillingSummary({
+      workspace,
+      plans: [plan("free", "Free", "active", 1)],
+      wallet: {
+        availableCredits: 34,
+        validUntil: "2026-08-10T15:41:41.070Z",
+        lastPurchaseId: null,
+        createdAt: "2026-07-11T15:41:41.070Z",
+        updatedAt: "2026-07-11T15:41:41.070Z",
+      },
+      purchases: [],
+      now: new Date("2026-08-10T15:41:41.071Z"),
+    });
+
+    expect(summary.availableCredits).toBe(0);
+    expect(summary.isWalletActive).toBe(false);
   });
 
   it("does not count abandoned checkout attempts as broker purchases", () => {

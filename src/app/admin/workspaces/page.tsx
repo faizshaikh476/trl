@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth/current-user";
 import { billingService, formatPlanPrice } from "@/lib/billing/billing-service";
+import { creditWalletService } from "@/lib/billing/credit-wallet-service";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { firestorePaths } from "@/lib/firebase/paths";
 import { workspaceService } from "@/lib/workspaces/workspace-service";
@@ -202,8 +203,8 @@ export default async function AdminWorkspacesPage() {
 
 async function getWalletInspection(workspaceId: string): Promise<WalletInspection> {
   const db = getAdminDb();
-  const [walletSnapshot, ledgerSnapshot] = await Promise.all([
-    db.doc(firestorePaths.workspaceWallet(workspaceId)).get(),
+  const [wallet, ledgerSnapshot] = await Promise.all([
+    creditWalletService.getWallet(workspaceId),
     db
       .collection(firestorePaths.workspaceCreditLedger(workspaceId))
       .where("type", "==", "grant")
@@ -214,7 +215,7 @@ async function getWalletInspection(workspaceId: string): Promise<WalletInspectio
   const entries = ledgerSnapshot.docs.map((doc) => doc.data() as CreditLedgerEntry);
   return {
     workspaceId,
-    wallet: walletSnapshot.exists ? (walletSnapshot.data() as CreditWallet) : null,
+    wallet,
     lastGrant: entries.find((entry) => entry.type === "grant") ?? null,
   };
 }

@@ -148,6 +148,47 @@ describe("CreditWalletService", () => {
     });
   });
 
+  it("returns zero balance after the wallet validity has passed", async () => {
+    await service.grantCredits({
+      workspaceId: "workspace_1",
+      quantity: 10,
+      validityDays: 1,
+      sourceId: "purchase_1",
+      sourceType: "purchase",
+    });
+    now = new Date("2026-07-10T10:00:00.001Z");
+
+    expect(await service.getBalance("workspace_1")).toBe(0);
+    await expect(service.getWallet("workspace_1")).resolves.toMatchObject({
+      availableCredits: 0,
+    });
+  });
+
+  it("starts a new grant from zero when the existing wallet has expired", async () => {
+    await service.grantCredits({
+      workspaceId: "workspace_1",
+      quantity: 10,
+      validityDays: 1,
+      sourceId: "purchase_1",
+      sourceType: "purchase",
+    });
+    now = new Date("2026-07-10T10:00:00.001Z");
+
+    await service.grantCredits({
+      workspaceId: "workspace_1",
+      quantity: 5,
+      validityDays: 30,
+      sourceId: "purchase_2",
+      sourceType: "purchase",
+    });
+
+    expect(await store.getWallet("workspace_1")).toMatchObject({
+      availableCredits: 5,
+      validUntil: "2026-08-09T10:00:00.001Z",
+      lastPurchaseId: "purchase_2",
+    });
+  });
+
   it("rejects consumption from missing, empty, or expired wallets without writing a ledger entry", async () => {
     await expect(
       service.consumeForListing({

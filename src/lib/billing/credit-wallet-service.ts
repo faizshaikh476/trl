@@ -80,8 +80,9 @@ export class CreditWalletService {
         reason: input.reason?.trim() || defaultGrantReason(input.sourceType),
         createdAt: timestamp,
       };
+      const existingBalance = effectiveCreditBalance(existingWallet, now);
       const wallet: CreditWallet = {
-        availableCredits: (existingWallet?.availableCredits ?? 0) + input.quantity,
+        availableCredits: existingBalance + input.quantity,
         validUntil,
         lastPurchaseId:
           input.sourceType === "purchase"
@@ -146,12 +147,15 @@ export class CreditWalletService {
 
   async getBalance(workspaceId: string) {
     assertIdentifier(workspaceId, "workspaceId");
-    return (await this.store.getWallet(workspaceId))?.availableCredits ?? 0;
+    return effectiveCreditBalance(await this.store.getWallet(workspaceId), this.now());
   }
 
   async getWallet(workspaceId: string) {
     assertIdentifier(workspaceId, "workspaceId");
-    return this.store.getWallet(workspaceId);
+    const wallet = await this.store.getWallet(workspaceId);
+    return wallet
+      ? { ...wallet, availableCredits: effectiveCreditBalance(wallet, this.now()) }
+      : null;
   }
 }
 
@@ -205,6 +209,12 @@ class FirestoreWalletTransaction implements CreditWalletTransaction {
       entry,
     );
   }
+}
+
+export function effectiveCreditBalance(wallet: CreditWallet | null, now = new Date()) {
+  return wallet && isActive(wallet, now.toISOString())
+    ? Math.max(0, wallet.availableCredits)
+    : 0;
 }
 
 function isActive(wallet: CreditWallet, timestamp: string) {
