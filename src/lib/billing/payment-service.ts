@@ -8,6 +8,7 @@ import { firestorePaths } from "@/lib/firebase/paths";
 import { listingService } from "@/lib/listings/listing-service";
 import { revalidatePublicListing } from "@/lib/public/public-listing-cache";
 import { createWhatsAppProvider } from "@/lib/whatsapp/providers/provider-factory";
+import { workspaceService } from "@/lib/workspaces/workspace-service";
 import type { CreditLedgerEntry, CreditPurchase, Listing, Plan } from "@/types/domain";
 import { getRazorpayOrderClient } from "./razorpay-client";
 
@@ -82,6 +83,9 @@ export interface PaymentServiceDependencies {
       sourceId: string;
       sourceType: "purchase";
     }): Promise<CreditLedgerEntry>;
+  };
+  workspaces: {
+    updatePlan(workspaceId: string, planId: string): Promise<unknown>;
   };
   listings: Pick<typeof listingService, "findByWorkspaceId" | "updateStatusInWorkspace">;
   revalidateListing(listing: Listing): void;
@@ -346,6 +350,7 @@ export class PaymentService {
   private async ensurePurchaseCreditsGranted(purchase: CreditPurchase) {
     if (purchase.creditGrantLedgerEntryId) return purchase;
     const entry = await this.grantPurchaseCredits(purchase);
+    await this.dependencies.workspaces.updatePlan(purchase.workspaceId, purchase.planId);
     return this.dependencies.store.markCreditsGranted({
       purchaseId: purchase.id,
       creditGrantLedgerEntryId: entry.id,
@@ -880,6 +885,7 @@ export const paymentService = new PaymentService({
       (await billingService.listActivePlans()).find((plan) => plan.id === planId) ?? null,
   },
   wallet: creditWalletService,
+  workspaces: workspaceService,
   listings: listingService,
   revalidateListing: revalidatePublicListing,
   sendActivationMessage: async ({ phone, listing }) => {

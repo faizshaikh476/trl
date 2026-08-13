@@ -208,6 +208,8 @@ describe("PaymentService", () => {
   let activationListingStatus: "ready_to_publish" | "published";
   let activationPublicationFailures: number;
   let activationPublishCalls: number;
+  let assignedWorkspacePlan: string;
+  let planAssignmentCount: number;
 
   beforeEach(() => {
     now = new Date("2026-07-10T12:00:00.000Z");
@@ -218,6 +220,8 @@ describe("PaymentService", () => {
     activationListingStatus = "ready_to_publish";
     activationPublicationFailures = 0;
     activationPublishCalls = 0;
+    assignedWorkspacePlan = "free";
+    planAssignmentCount = 0;
     service = new PaymentService({
       store,
       orders,
@@ -244,6 +248,12 @@ describe("PaymentService", () => {
             reason: "Credit purchase",
             createdAt: now.toISOString(),
           };
+        },
+      },
+      workspaces: {
+        updatePlan: async (_workspaceId, planId) => {
+          assignedWorkspacePlan = planId;
+          planAssignmentCount += 1;
         },
       },
       listings: {
@@ -434,6 +444,25 @@ describe("PaymentService", () => {
         sourceType: "purchase",
       },
     ]);
+  });
+
+  it("assigns the purchased plan to the workspace exactly once after payment", async () => {
+    const order = await service.createOrder({
+      workspaceId: "workspace_1",
+      planId: "growth",
+      idempotencyKey: "assign-purchased-plan",
+    });
+    const verification = {
+      razorpay_order_id: order.providerOrderId,
+      razorpay_payment_id: "pay_assign_plan",
+      razorpay_signature: checkoutSignature(order.providerOrderId, "pay_assign_plan"),
+    };
+
+    await service.verifyCheckout(verification);
+    await service.verifyCheckout(verification);
+
+    expect(assignedWorkspacePlan).toBe("growth");
+    expect(planAssignmentCount).toBe(1);
   });
 
   it("publishes an activation listing exactly once after verified payment", async () => {
